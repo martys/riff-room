@@ -7,10 +7,8 @@ A family piano app: falling notes, levels and stars, sheet music, recording, and
 
 ## Deploy to Cloudflare (once)
 
-1. Create the storage: `npx wrangler login`, then `npx wrangler kv namespace create RIFF`.
-   (Or in the dashboard: Storage & Databases → KV → Create, name it `RIFF`.)
-2. Put the namespace id into `wrangler.toml` in place of `PASTE_THE_KV_NAMESPACE_ID_HERE`.
-3. Either run `npx wrangler deploy` from the repo root, or connect the repo for automatic deploys:
+1. Storage is already created (KV namespace `riff-room-RIFF`, id in `wrangler.toml`).
+2. Either run `npx wrangler deploy` from the repo root, or connect the repo for automatic deploys:
    Workers & Pages → Create → Import a repository → `martys/riff-room`, deploy command `npx wrangler deploy`.
    With the repo connected, every push to `main` deploys.
 

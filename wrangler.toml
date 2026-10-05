@@ -12,4 +12,4 @@ ALLOWED_ORIGINS = "https://martys.github.io"
 
 [[kv_namespaces]]
 binding = "RIFF"
-id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
+id = "8e05db8aa3c649cb9bb9e380ea679f39"
