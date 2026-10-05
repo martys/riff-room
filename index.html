@@ -156,6 +156,13 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .recpill i { width: 9px; height: 9px; border-radius: 50%; background: #e5534b; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .2; } }
 button.rec { color: #f08a80; }
+.help { gap: 10px; }
+.help p { margin: 0; font-size: 14px; line-height: 1.45; }
+.help .why { color: var(--brass); font-weight: 700; }
+.help dl { margin: 0; display: grid; gap: 4px; }
+.help dt { font-weight: 700; margin-top: 6px; }
+.help dd { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.help .small { font-size: 12px; color: var(--muted); }
 button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
 @media (max-width: 520px) {
   .who-name { display: none; }
@@ -206,6 +213,27 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <div class="paper-head"><b id="paperTitle"></b><span id="paperNote"></span><button class="c" id="paperClose">Hide</button></div>
       <div id="abc"></div>
     </section>
+    <div class="sheet" id="pianoHelp" hidden role="dialog" aria-label="Connect the piano">
+      <div class="sheet-card help">
+        <div class="sheet-head"><h2>Connect the piano</h2><button class="c" id="pianoHelpClose">Close</button></div>
+        <p class="why" id="pianoWhy"></p>
+        <p>Turn the Kawai on, then connect it one of these ways. Afterwards tap <b>Try again</b>.</p>
+        <dl>
+          <dt>USB cable (most reliable)</dt>
+          <dd>Plug the piano's <b>USB to Host</b> port (square type B) into the laptop or an Android tablet (with a USB-C adapter). Nothing to pair.</dd>
+          <dt>Bluetooth on a Mac</dt>
+          <dd>Open <b>Audio MIDI Setup</b>, choose Window → Show MIDI Studio, click the Bluetooth icon and connect the piano. Then use Chrome.</dd>
+          <dt>Bluetooth on Android</dt>
+          <dd>Bluetooth MIDI usually has to be connected by an app first, such as a "BLE MIDI connect" app or Kawai's PianoRemote. Then open this site in Chrome. Don't pair it in the normal Bluetooth settings.</dd>
+          <dt>Windows</dt>
+          <dd>Chrome on Windows generally can't use Bluetooth MIDI. Use the USB cable.</dd>
+          <dt>iPhone and iPad</dt>
+          <dd>Safari and Chrome on iOS don't support web MIDI at all. Use a laptop or Android, or a Web MIDI browser app from the App Store.</dd>
+        </dl>
+        <p class="small">Also check that Bluetooth MIDI is switched on in the piano's settings. The app stays silent for piano notes, since the piano makes its own sound.</p>
+        <div class="row"><button class="big primary" id="pianoRetry">Try again</button></div>
+      </div>
+    </div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
@@ -582,29 +610,32 @@ function stopDemo(silent){
 /* ---------- MIDI (Kawai CA401 over Bluetooth or USB) ---------- */
 S.pianoMutes = true; // the piano makes its own sound, so the app stays quiet for piano notes
 let midiAccess = null;
-async function connectPiano(){
-  if (!navigator.requestMIDIAccess) {
-    return flash("This browser can't read MIDI. Use Chrome or Edge on a laptop or Android. iPhone and iPad Safari don't support it; on iPad use a Web MIDI browser app.", 9000);
-  }
+async function connectPiano(quiet){
+  if (!navigator.requestMIDIAccess) { if (!quiet) showPianoHelp("This browser can't talk to MIDI devices."); return; }
   try {
     midiAccess = await navigator.requestMIDIAccess({ sysex:false });
-    midiAccess.onstatechange = wireInputs; wireInputs();
+    midiAccess.onstatechange = () => wireInputs(true); wireInputs(quiet);
   } catch (e) {
-    flash("MIDI is blocked on this page. Open the standalone Riff Room file in Chrome instead of the in-app preview.", 9000);
+    if (!quiet) showPianoHelp("The browser blocked MIDI access. If it asked for permission, allow it. In the Claude app preview MIDI is always blocked: open the site link in Chrome instead.");
   }
 }
-function wireInputs(){
+let firstNoteSeen = false;
+function wireInputs(quiet){
   const ins = [...midiAccess.inputs.values()];
   ins.forEach(i => i.onmidimessage = onMidi);
   const btn = $("pianoBtn");
-  if (ins.length) { btn.classList.add("on"); btn.textContent = "🎹 " + (ins[0].name || "Piano"); flash(`Connected: ${ins.map(i=>i.name).join(", ")}`); }
-  else { btn.classList.remove("on"); btn.textContent = "Connect piano"; flash("No piano found. Turn it on, then pair Bluetooth MIDI or plug in the USB cable, and tap Connect again.", 7000); }
+  if (ins.length) { btn.classList.add("on"); btn.textContent = "Piano: " + (ins[0].name || "connected"); $("pianoHelp").hidden = true;
+    if (!quiet) flash(`Connected: ${ins.map(i=>i.name).join(", ")}. Play a key to check.`); firstNoteSeen = false; }
+  else { btn.classList.remove("on"); btn.textContent = "Connect piano"; if (!quiet) showPianoHelp("No piano found yet."); }
 }
 function onMidi(e){
   const [st, n, v] = e.data; const type = st & 0xf0;
-  if (type === 0x90 && v > 0) noteOn(n, "midi");
+  if (type === 0x90 && v > 0) { noteOn(n, "midi"); if (!firstNoteSeen) { firstNoteSeen = true; flash(`Piano works: heard ${NAMES[n%12]}${Math.floor(n/12)-1}.`); } }
   else if (type === 0x80 || (type === 0x90 && v === 0)) noteOff(n, "midi");
 }
+function showPianoHelp(why){ $("pianoWhy").textContent = why; $("pianoHelp").hidden = false; }
+// Reconnect quietly on load when the browser already allowed MIDI for this site.
+(async () => { try { const q = await navigator.permissions.query({ name:"midi" }); if (q.state === "granted") connectPiano(true); } catch(e) {} })();
 
 /* ---------- Computer keyboard (for testing on a laptop) ---------- */
 const KMAP = "awsedftgyhujkolp;'";
@@ -1054,7 +1085,9 @@ $("tempo").oninput = e => { S.bpm = +e.target.value; $("tempoOut").value = S.bpm
 $("namesBtn").setAttribute("aria-pressed", S.names);
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
-$("pianoBtn").onclick = connectPiano;
+$("pianoBtn").onclick = () => connectPiano(false);
+$("pianoRetry").onclick = () => connectPiano(false);
+$("pianoHelpClose").onclick = () => { $("pianoHelp").hidden = true; };
 $("scoreBtn").onclick = () => setSheet(!SH.open);
 $("paperClose").onclick = () => setSheet(false);
 $("recBtn").onclick = () => REC.on ? stopRec() : startRec();
