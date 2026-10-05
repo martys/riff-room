@@ -1,0 +1,15 @@
+# Riff Room on Cloudflare: the app (public/) and the sync API (/data) from one Worker.
+name = "riff-room"
+main = "sync/worker.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+
+[vars]
+# Browsers on other sites may not call the sync API. Same-address requests from the app always work.
+ALLOWED_ORIGINS = "https://martys.github.io"
+
+[[kv_namespaces]]
+binding = "RIFF"
+id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
