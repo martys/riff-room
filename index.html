@@ -1020,7 +1020,7 @@ function stopRec(){
 
 /* ---------- Sync across devices (Cloudflare Worker, see sync/README.md) ---------- */
 // Sync runs when the app is served by its Cloudflare Worker (same address, path /data). Elsewhere it stays off.
-const SYNC_HOSTS = [/\.workers\.dev$/];          // add a custom domain here if you set one up
+const SYNC_HOSTS = [/\.workers\.dev$/, /^(www\.)?pianoriffs\.app$/];
 const SYNC_URL = SYNC_HOSTS.some(r => r.test(location.hostname)) ? "" : null;
 const SY = { code: store.get("sync.code", ""), busy:false, timer:0, last:0 };
 function snapshot(){

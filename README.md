@@ -12,7 +12,7 @@ A family piano app: falling notes, levels and stars, sheet music, recording, and
    Workers & Pages → Create → Import a repository → `martys/riff-room`, deploy command `npx wrangler deploy`.
    With the repo connected, every push to `main` deploys.
 
-The app is then at `https://riff-room.<your-subdomain>.workers.dev`. Sync switches on automatically there
+The app is at `https://pianoriffs.app` (custom domain, set in `wrangler.toml`), and also at `https://riff-room.<your-subdomain>.workers.dev`. Sync switches on automatically there
 (the app checks for a `.workers.dev` address; add a custom domain to `SYNC_HOSTS` in the app if you use one).
 
 ## Sync
