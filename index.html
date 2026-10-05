@@ -109,7 +109,45 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .choice { display: grid; gap: 10px; }
 .choice p { margin: 0; color: var(--muted); font-size: 14px; }
 .choice .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.who-btn { display: flex; align-items: center; gap: 8px; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px 4px 4px; color: var(--fg); cursor: pointer; font: 700 13px var(--font-body); }
+.av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 800 14px var(--font-display); color: #14161d; flex: none; }
+.big-av { width: 44px; height: 44px; font-size: 20px; }
+.who-list { display: grid; gap: 8px; }
+.who-card { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; width: 100%; text-align: left; background: var(--chip); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; color: var(--fg); cursor: pointer; font: inherit; }
+.who-card[aria-current="true"] { border-color: var(--brass); }
+.who-card b { display: block; font: 800 20px var(--font-display); }
+.who-card small { color: var(--muted); font-size: 13px; }
+.who-foot { margin: 0; font-size: 12px; color: var(--muted); }
+.sheet-head h2 small { font: 400 14px var(--font-body); color: var(--muted); margin-left: 6px; }
+.lvl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.group h3 { font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--fg); margin: 0; }
+.lvl-n { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--brass); margin-right: 4px; }
+.lvl-name { font-family: var(--font-display); font-weight: 800; }
+.lvl-stars { font-size: 12px; color: var(--brass); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lvl-what { margin: 4px 0 8px; font-size: 12px; color: var(--muted); }
+.group { display: grid; margin-bottom: 6px; }
+.group.locked ul { opacity: .45; }
+.song:disabled { cursor: not-allowed; }
+.song.drill { background: transparent; border-style: dashed; }
+.song .nm { min-width: 0; }
+.stars { display: inline-flex; gap: 1px; font-size: 13px; color: #464c63; }
+.stars i { font-style: normal; }
+.stars i.on { color: var(--brass); }
+.hud { position: absolute; left: 16px; top: 12px; display: flex; gap: 10px; background: rgba(18,21,31,.8); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.hud .wrong { color: #e98a80; }
+.done-stars { display: flex; gap: 6px; justify-content: center; font-size: 40px; line-height: 1; }
+.done-stars i { font-style: normal; color: #3a4057; }
+.done-stars i.on { color: var(--brass); animation: pop .45s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes pop { from { transform: scale(0) rotate(-40deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.done-score { display: flex; gap: 10px; justify-content: center; align-items: center; }
+.done-score b { font: 800 34px var(--font-display); font-variant-numeric: tabular-nums; }
+.tag { background: var(--brass); color: #1a1408; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.done-text { display: grid; gap: 4px; font-size: 13px; }
+.tricky { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; font-size: 13px; color: var(--fg); background: var(--chip); border-radius: 12px; padding: 8px 10px; }
+@media (prefers-reduced-motion: reduce) { .done-stars i.on { animation: none; } }
 @media (max-width: 520px) {
+  .who-name { display: none; }
+  .who-btn { padding: 3px; }
   .song-title { font-size: 19px; }
   .spacer { display: none; }
   .bar { gap: 6px 8px; padding-block: 8px; }
@@ -124,6 +162,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
 <div id="app">
   <header class="bar">
+    <button class="who-btn" id="whoBtn" aria-haspopup="dialog" aria-label="Change player"><span class="av"></span><span class="who-name"></span></button>
     <button class="song-btn" id="songBtn" aria-haspopup="dialog">
       <span style="min-width:0">
         <span class="brand">Riff Room</span>
@@ -150,21 +189,34 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   <main class="stage" id="stage">
     <canvas id="cv" aria-label="Falling notes above a piano keyboard. Tap keys to play."></canvas>
     <div class="hint" id="hint">Press the glowing key</div>
+    <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
     <div class="done" id="done" hidden>
       <div class="done-card">
         <h2 id="doneTitle">You played it!</h2>
-        <p id="doneText">Ode to Joy, start to finish.</p>
+        <div class="done-stars" id="doneStars" hidden></div>
+        <div class="done-score" id="doneScore" hidden></div>
+        <p class="done-text" id="doneText"></p>
+        <div class="tricky" id="tricky" hidden><span id="trickyText"></span><button class="c" id="trickyBtn">Practise this bit</button></div>
         <div class="row">
           <button class="big primary" id="againBtn">Play again</button>
+          <button class="big" id="nextBtn" hidden>Next</button>
+          <button class="big" id="backBtn" hidden>Back to the full piece</button>
           <button class="big" id="pickBtn">Pick another</button>
         </div>
       </div>
     </div>
     <div class="sheet" id="sheet" hidden role="dialog" aria-label="Pick a riff">
       <div class="sheet-card">
-        <div class="sheet-head"><h2>Pick a riff</h2><button class="c" id="closeSheet">Close</button></div>
+        <div class="sheet-head"><h2>Pick a piece <small id="sheetWho"></small></h2><button class="c" id="closeSheet">Close</button></div>
         <div id="songList"></div>
+      </div>
+    </div>
+    <div class="sheet" id="who" hidden role="dialog" aria-label="Who's playing?">
+      <div class="sheet-card">
+        <div class="sheet-head"><h2>Who's playing?</h2><button class="c" id="whoClose">Close</button></div>
+        <div class="who-list" id="whoList"></div>
+        <p class="who-foot">Stars and stats are saved in this browser, separately for each person.</p>
       </div>
     </div>
   </main>
@@ -177,45 +229,63 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
    Chords: C4+E4:2   Rests: r:1
    Add a riff by adding one entry here. */
 const SONGS = [
-  { id:"mary",  title:"Mary Had a Little Lamb", level:"Little hands", hand:"right hand", bpm:104,
+  { id:"d1", drill:true, title:"Warm-up: Five-finger walk", lvl:1, hand:"right hand · C D E F G", bpm:96,
+    notes:"C4 D4 E4 F4 G4:2 G4 F4 E4 D4 C4:2 C4 D4 C4 D4 E4 F4 E4 F4 G4 F4 E4 D4 C4:4" },
+  { id:"d2", drill:true, title:"Warm-up: Hop and skip", lvl:2, hand:"right hand · skips and dotted notes", bpm:96,
+    notes:"C4 E4 G4:2 E4 C4:2 D4 F4 A4:2 F4 D4:2 E4:1.5 F4:.5 G4:1.5 E4:.5 C5:2 G4:2 C4:4" },
+  { id:"d3", drill:true, title:"Warm-up: Scale climb", lvl:3, hand:"right hand · thumb tucks under", bpm:96,
+    notes:"C4 D4 E4 F4 G4 A4 B4 C5:2 B4 A4 G4 F4 E4 D4 C4:2 F#4 G#4 A#4:2 G#4 F#4:2 C4:2" },
+  { id:"d4", drill:true, title:"Warm-up: Bass and tune", lvl:4, hand:"both hands · one bass note per bar", bpm:88,
+    notes:"C3+C4 D4 E4 F4 G2+G4:2 E4:2 C3+C4 D4 E4 C4 G2+D4:2 G4:2 C3+E4 F4 G4 E4 F3+F4 E4 D4 C4 G2+D4:2 B3:2 C3+C4:4" },
+  { id:"d5", drill:true, title:"Warm-up: Octaves and crossing", lvl:5, hand:"both hands", bpm:88,
+    notes:"C3+C4 C3+C4 E3+E4 E3+E4 G3+G4 G3+G4 C4+C5:2 G3+G4 E3+E4 C3+C4:2 C3:1/3 E3:1/3 G3:1/3 C4:1/3 E4:1/3 G4:1/3 C5:2 C3+G3+C4:4" },
+  { id:"d6", drill:true, title:"Warm-up: Arpeggio flow", lvl:6, hand:"one line · up and down", bpm:84,
+    notes:"C4:.5 E4:.5 G4:.5 C5:.5 E5:.5 C5:.5 G4:.5 E4:.5 F4:.5 A4:.5 C5:.5 F5:.5 A5:.5 F5:.5 C5:.5 A4:.5 G4:.5 B4:.5 D5:.5 G5:.5 B5:.5 G5:.5 D5:.5 B4:.5 C5:4" },
+  { id:"marybass", title:"Mary Had a Little Lamb + bass", lvl:4, hand:"both hands · C and G in the bass", bpm:100,
+    notes:"C3+E4 D4 C4 D4 C3+E4 E4 E4:2 G2+D4 D4 D4:2 C3+E4 G4 G4:2 C3+E4 D4 C4 D4 C3+E4 E4 E4 E4 G2+D4 D4 E4 D4 C3+C4:4" },
+  { id:"jinglebass", title:"Jingle Bells + bass", lvl:4, hand:"both hands · bass on each bar", bpm:112,
+    notes:"C3+E4 E4 E4:2 C3+E4 E4 E4:2 C3+E4 G4 C4:1.5 D4:.5 C3+E4:4 F3+F4 F4 F4:1.5 F4:.5 C3+F4 E4 E4 E4:.5 E4:.5 D3+E4 D4 D4 E4 G2+D4:2 G4:2" },
+  { id:"mountainlh", title:"Mountain King (left hand)", lvl:4, hand:"left hand plays the tune", bpm:108,
+    notes:"A2:.5 B2:.5 C3:.5 D3:.5 E3:.5 C3:.5 E3 D#3:.5 B2:.5 D#3 D3:.5 A#2:.5 D3 A2:.5 B2:.5 C3:.5 D3:.5 E3:.5 C3:.5 E3:.5 A3:.5 G3:.5 E3:.5 C3:.5 E3:.5 G3:2 A2:.5 B2:.5 C3:.5 D3:.5 E3:.5 C3:.5 E3 D#3:.5 B2:.5 D#3 D3:.5 A#2:.5 D3 A2:.5 B2:.5 C3:.5 D3:.5 E3:.5 C3:.5 E3:.5 A3:.5 G3:.5 E3:.5 C3:.5 E3:.5 G3:2" },
+  { id:"mary", title:"Mary Had a Little Lamb", lvl:1, hand:"right hand", bpm:104,
     notes:"E4 D4 C4 D4 E4 E4 E4:2 D4 D4 D4:2 E4 G4 G4:2 E4 D4 C4 D4 E4 E4 E4 E4 D4 D4 E4 D4 C4:4" },
-  { id:"twinkle", title:"Twinkle Twinkle", level:"Little hands", hand:"right hand", bpm:100,
+  { id:"twinkle", title:"Twinkle Twinkle", lvl:1, hand:"right hand", bpm:100,
     notes:"C4 C4 G4 G4 A4 A4 G4:2 F4 F4 E4 E4 D4 D4 C4:2 G4 G4 F4 F4 E4 E4 D4:2 G4 G4 F4 F4 E4 E4 D4:2 C4 C4 G4 G4 A4 A4 G4:2 F4 F4 E4 E4 D4 D4 C4:2" },
-  { id:"jingle", title:"Jingle Bells", level:"Little hands", hand:"right hand", bpm:120,
+  { id:"jingle", title:"Jingle Bells", lvl:2, hand:"right hand", bpm:120,
     notes:"E4 E4 E4:2 E4 E4 E4:2 E4 G4 C4:1.5 D4:.5 E4:4 F4 F4 F4:1.5 F4:.5 F4 E4 E4 E4:.5 E4:.5 E4 D4 D4 E4 D4:2 G4:2" },
-  { id:"ode", title:"Ode to Joy", level:"Easy", hand:"right hand", bpm:100,
+  { id:"ode", title:"Ode to Joy", lvl:1, hand:"right hand", bpm:100,
     notes:"E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 E4:1.5 D4:.5 D4:2 E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4:1.5 C4:.5 C4:2" },
-  { id:"bday", title:"Happy Birthday", level:"Easy", hand:"right hand", bpm:96,
+  { id:"bday", title:"Happy Birthday", lvl:2, hand:"right hand", bpm:96,
     notes:"G4:.75 G4:.25 A4 G4 C5 B4:2 G4:.75 G4:.25 A4 G4 D5 C5:2 G4:.75 G4:.25 G5 E5 C5 B4 A4:2 F5:.75 F5:.25 E5 C5 D5 C5:3" },
-  { id:"mountain", title:"Hall of the Mountain King", level:"Easy", hand:"right hand · speeds up", bpm:116,
+  { id:"mountain", title:"Hall of the Mountain King", lvl:3, hand:"right hand · speeds up", bpm:116,
     notes:"A3:0.5 B3:0.5 C4:0.5 D4:0.5 E4:0.5 C4:0.5 E4:1.0 D#4:0.5 B3:0.5 D#4:1.0 D4:0.5 A#3:0.5 D4:1.0 A3:0.5 B3:0.5 C4:0.5 D4:0.5 E4:0.5 C4:0.5 E4:0.5 A4:0.5 G4:0.5 E4:0.5 C4:0.5 E4:0.5 G4:2.0 A3:0.425 B3:0.425 C4:0.425 D4:0.425 E4:0.425 C4:0.425 E4:0.85 D#4:0.425 B3:0.425 D#4:0.85 D4:0.425 A#3:0.425 D4:0.85 A3:0.425 B3:0.425 C4:0.425 D4:0.425 E4:0.425 C4:0.425 E4:0.425 A4:0.425 G4:0.425 E4:0.425 C4:0.425 E4:0.425 G4:1.7 A3:0.36 B3:0.36 C4:0.36 D4:0.36 E4:0.36 C4:0.36 E4:0.72 D#4:0.36 B3:0.36 D#4:0.72 D4:0.36 A#3:0.36 D4:0.72 A3:0.36 B3:0.36 C4:0.36 D4:0.36 E4:0.36 C4:0.36 E4:0.36 A4:0.36 G4:0.36 E4:0.36 C4:0.36 E4:0.36 G4:1.44 A3:0.3 B3:0.3 C4:0.3 D4:0.3 E4:0.3 C4:0.3 E4:0.6 D#4:0.3 B3:0.3 D#4:0.6 D4:0.3 A#3:0.3 D4:0.6 A3:0.3 B3:0.3 C4:0.3 D4:0.3 E4:0.3 C4:0.3 E4:0.3 A4:0.3 G4:0.3 E4:0.3 C4:0.3 E4:0.3 G4:1.2" },
-  { id:"elise", title:"Für Elise", level:"A step up", hand:"right hand · main theme", bpm:84,
+  { id:"elise", title:"Für Elise", lvl:6, hand:"right hand · main theme", bpm:84,
     notes:"E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4 r:.5 C4:.5 E4:.5 A4:.5 B4 r:.5 E4:.5 G#4:.5 B4:.5 C5 r:.5 E4:.5 E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4 r:.5 C4:.5 E4:.5 A4:.5 B4 r:.5 E4:.5 C5:.5 B4:.5 A4 r:.5 B4:.5 C5:.5 D5:.5 E5:1.5 G4:.5 F5:.5 E5:.5 D5:1.5 F4:.5 E5:.5 D5:.5 C5:1.5 E4:.5 D5:.5 C5:.5 B4 r E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4 r:.5 C4:.5 E4:.5 A4:.5 B4 r:.5 E4:.5 G#4:.5 B4:.5 C5 r:.5 E4:.5 E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4 r:.5 C4:.5 E4:.5 A4:.5 B4 r:.5 E4:.5 C5:.5 B4:.5 A4:3" },
-  { id:"prelude", title:"Prelude in C", level:"A step up", hand:"one line · Bach", bpm:76,
+  { id:"prelude", title:"Prelude in C", lvl:6, hand:"one line · Bach", bpm:76,
     notes:"C4:.5 E4:.5 G4:.5 C5:.5 E5:.5 G4:.5 C5:.5 E5:.5 C4:.5 E4:.5 G4:.5 C5:.5 E5:.5 G4:.5 C5:.5 E5:.5 C4:.5 D4:.5 A4:.5 D5:.5 F5:.5 A4:.5 D5:.5 F5:.5 C4:.5 D4:.5 A4:.5 D5:.5 F5:.5 A4:.5 D5:.5 F5:.5 B3:.5 D4:.5 G4:.5 D5:.5 F5:.5 G4:.5 D5:.5 F5:.5 B3:.5 D4:.5 G4:.5 D5:.5 F5:.5 G4:.5 D5:.5 F5:.5 C4:.5 E4:.5 G4:.5 C5:.5 E5:.5 G4:.5 C5:.5 E5:.5 C4:.5 E4:.5 G4:.5 C5:.5 E5:.5 G4:.5 C5:.5 E5:.5 C4:.5 E4:.5 A4:.5 E5:.5 A5:.5 A4:.5 E5:.5 A5:.5 C4:.5 E4:.5 A4:.5 E5:.5 A5:.5 A4:.5 E5:.5 A5:.5 C4:.5 D4:.5 F#4:.5 A4:.5 D5:.5 F#4:.5 A4:.5 D5:.5 C4:.5 D4:.5 F#4:.5 A4:.5 D5:.5 F#4:.5 A4:.5 D5:.5 B3:.5 D4:.5 G4:.5 D5:.5 G5:.5 G4:.5 D5:.5 G5:.5 B3:.5 D4:.5 G4:.5 D5:.5 G5:.5 G4:.5 D5:.5 G5:.5 B3:.5 C4:.5 E4:.5 G4:.5 C5:.5 E4:.5 G4:.5 C5:.5 B3:.5 C4:.5 E4:.5 G4:.5 C5:.5 E4:.5 G4:.5 C5:.5 A3:.5 C4:.5 E4:.5 G4:.5 C5:.5 E4:.5 G4:.5 C5:.5 A3:.5 C4:.5 E4:.5 G4:.5 C5:.5 E4:.5 G4:.5 C5:.5 D3:.5 A3:.5 D4:.5 F#4:.5 C5:.5 D4:.5 F#4:.5 C5:.5 D3:.5 A3:.5 D4:.5 F#4:.5 C5:.5 D4:.5 F#4:.5 C5:.5 G3:.5 B3:.5 D4:.5 G4:.5 B4:.5 D4:.5 G4:.5 B4:.5 G3:.5 B3:.5 D4:.5 G4:.5 B4:.5 D4:.5 G4:.5 B4:.5 C4+E4+G4+C5:4" },
-  { id:"greensleeves", title:"Greensleeves", level:"A step up", hand:"right hand", bpm:92,
+  { id:"greensleeves", title:"Greensleeves", lvl:3, hand:"right hand", bpm:92,
     notes:"A4:.5 C5:1 D5:.5 E5:.75 F5:.25 E5:.5 D5:1 B4:.5 G4:.75 A4:.25 B4:.5 C5:1 A4:.5 A4:.75 G#4:.25 A4:.5 B4:1 G#4:.5 E4:1 A4:.5 C5:1 D5:.5 E5:.75 F5:.25 E5:.5 D5:1 B4:.5 G4:.75 A4:.25 B4:.5 C5:.75 B4:.25 A4:.5 G#4:.75 F#4:.25 G#4:.5 A4:1.5" },
-  { id:"turca", title:"Turkish March (opening)", level:"A step up", hand:"right hand · Mozart", bpm:84,
+  { id:"turca", title:"Turkish March (opening)", lvl:6, hand:"right hand · Mozart", bpm:84,
     notes:"B4:.25 A4:.25 G#4:.25 A4:.25 C5:.5 r:.5 D5:.25 C5:.25 B4:.25 C5:.25 E5:.5 r:.5 F5:.25 E5:.25 D#5:.25 E5:.25 B5:.25 A5:.25 G#5:.25 A5:.25 B5:.25 A5:.25 G#5:.25 A5:.25 C6:1.5 r:.5 B4:.25 A4:.25 G#4:.25 A4:.25 C5:.5 r:.5 D5:.25 C5:.25 B4:.25 C5:.25 E5:.5 r:.5 F5:.25 E5:.25 D#5:.25 E5:.25 B5:.25 A5:.25 G#5:.25 A5:.25 B5:.25 A5:.25 G#5:.25 A5:.25 C6:1.5 r:.5" },
-  { id:"nacht", title:"Eine kleine Nachtmusik", level:"A step up", hand:"right hand · Mozart", bpm:112,
+  { id:"nacht", title:"Eine kleine Nachtmusik", lvl:3, hand:"right hand · Mozart", bpm:112,
     notes:"G4 r:.5 D4:.5 G4 r:.5 D4:.5 G4:.5 D4:.5 G4:.5 B4:.5 D5:2 C5 r:.5 A4:.5 C5 r:.5 A4:.5 C5:.5 A4:.5 F#4:.5 A4:.5 D4:2" },
-  { id:"canon", title:"Canon in D", level:"A step up", hand:"both hands · Pachelbel", bpm:100,
+  { id:"canon", title:"Canon in D", lvl:5, hand:"both hands · Pachelbel", bpm:100,
     notes:"D3+F#5:2 A3+E5:2 B3+D5:2 F#3+C#5:2 G3+B4:2 D3+A4:2 G3+B4:2 A3+C#5:2 D3+D5:2 A3+C#5:2 B3+B4:2 F#3+A4:2 G3+G4:2 D3+F#4:2 G3+G4:2 A3+E4:2 D3+A3+F#4+D5:4" },
-  { id:"lullaby", title:"Brahms' Lullaby", level:"A step up", hand:"right hand", bpm:96,
+  { id:"lullaby", title:"Brahms' Lullaby", lvl:2, hand:"right hand", bpm:96,
     notes:"E4:.5 E4:.5 G4:2 E4:.5 E4:.5 G4:2 E4:.5 G4:.5 C5 B4:1.5 A4:.5 A4 G4 D4:.5 E4:.5 F4 D4 D4:.5 E4:.5 F4:2 D4:.5 F4:.5 B4:.5 A4:.5 G4 B4 C5:3" },
-  { id:"morning", title:"Morning Mood", level:"A step up", hand:"right hand · Grieg", bpm:88,
+  { id:"morning", title:"Morning Mood", lvl:2, hand:"right hand · Grieg", bpm:88,
     notes:"G4:.5 E4:.5 D4:.5 C4:.5 D4:.5 E4:.5 G4:.5 E4:.5 D4:.5 C4:.5 D4:.5 E4:.5 D4:.5 E4:.5 G4:.5 E4:.5 G4:.5 A4:.5 E4:.5 A4:.5 G4:.5 E4:.5 D4:.5 C4:2" },
-  { id:"spring", title:"Spring", level:"A step up", hand:"right hand · Vivaldi", bpm:96,
+  { id:"spring", title:"Spring", lvl:3, hand:"right hand · Vivaldi", bpm:96,
     notes:"E4:.5 G#4:.5 G#4:.5 G#4:.5 F#4:.25 E4:.25 B4:1.5 B4:.25 A4:.25 G#4:.5 G#4:.5 G#4:.5 F#4:.25 E4:.25 B4:1.5 B4:.25 A4:.25 G#4:.5 A4:.5 B4:.5 A4:.5 G#4:.5 F#4:1.5 E4:2" },
-  { id:"ode2", title:"Ode to Joy (both hands)", level:"A step up", hand:"both hands · Beethoven", bpm:100,
+  { id:"ode2", title:"Ode to Joy (both hands)", lvl:4, hand:"both hands · Beethoven", bpm:100,
     notes:"C3+E4 E4 F4 G4 G2+G4 F4 E4 D4 C3+C4 C4 D4 E4 G2+E4:1.5 D4:.5 D4:2 C3+E4 E4 F4 G4 G2+G4 F4 E4 D4 C3+C4 C4 D4 E4 G2+D4:1.5 C4:.5 C3+C4:2" },
-  { id:"fifth", title:"Beethoven's Fifth", level:"A step up", hand:"both hands · octaves", bpm:108,
+  { id:"fifth", title:"Beethoven's Fifth", lvl:5, hand:"both hands · octaves", bpm:108,
     notes:"r:.5 G3+G4:.5 G3+G4:.5 G3+G4:.5 D#3+D#4:3 r:.5 F3+F4:.5 F3+F4:.5 F3+F4:.5 D3+D4:3 r:.5 G3+G4:.5 G3+G4:.5 G3+G4:.5 D#3+D#4:3 r:.5 F3+F4:.5 F3+F4:.5 F3+F4:.5 D3+D4:3 C3+G3+C4:4" },
-  { id:"launch", title:"Launch Pad", level:"A step up", hand:"both hands · crossing", bpm:92,
+  { id:"launch", title:"Launch Pad", lvl:5, hand:"both hands · crossing", bpm:92,
     notes:"A3+E5 A3+D5 A3+C5 A3+B4 A3+A4 A3+B4 A3+C5:2 G3+D5 G3+C5 G3+B4 G3+A4 E3+G#4 E3+B4 E3+E5:2 A3+E5 A3+D5 A3+C5 A3+B4 A3+A4 A3+B4 A3+C5 A3+D5 F3+E5 F3+C5 E3+B4 E3+G#4 A3+A4:2 r:2 A3:1/3 C4:1/3 E4:1/3 A4:1/3 C5:1/3 E5:1/3 A5 r F3:1/3 A3:1/3 C4:1/3 F4:1/3 A4:1/3 C5:1/3 F5 r G3:1/3 B3:1/3 D4:1/3 G4:1/3 B4:1/3 D5:1/3 G5 r E3:1/3 G#3:1/3 B3:1/3 E4:1/3 G#4:1/3 B4:1/3 E5:1/3 G#5:1/3 B5:1/3 r A3+E4+A5:4" },
-  { id:"minuet", title:"Minuet in G", level:"A step up", hand:"right hand · Petzold", bpm:104,
+  { id:"minuet", title:"Minuet in G", lvl:3, hand:"right hand · Petzold", bpm:104,
     notes:"D5 G4:.5 A4:.5 B4:.5 C5:.5 D5 G4 G4 E5 C5:.5 D5:.5 E5:.5 F#5:.5 G5 G4 G4 C5 D5:.5 C5:.5 B4:.5 A4:.5 B4 C5:.5 B4:.5 A4:.5 G4:.5 F#4 G4:.5 A4:.5 B4:.5 G4:.5 A4:3 D5 G4:.5 A4:.5 B4:.5 C5:.5 D5 G4 G4 E5 C5:.5 D5:.5 E5:.5 F#5:.5 G5 G4 G4 C5 D5:.5 C5:.5 B4:.5 A4:.5 B4 C5:.5 B4:.5 A4:.5 G4:.5 A4 B4:.5 A4:.5 G4:.5 F#4:.5 G4:3" },
-  { id:"tetris", title:"Tetris theme", level:"Easy", hand:"right hand · Korobeiniki", bpm:120,
+  { id:"tetris", title:"Tetris theme", lvl:3, hand:"right hand · Korobeiniki", bpm:120,
     notes:"E5 B4:.5 C5:.5 D5 C5:.5 B4:.5 A4 A4:.5 C5:.5 E5 D5:.5 C5:.5 B4:1.5 C5:.5 D5 E5 C5 A4 A4:2 r:.5 D5 F5:.5 A5 G5:.5 F5:.5 E5:1.5 C5:.5 E5 D5:.5 C5:.5 B4 B4:.5 C5:.5 D5 E5 C5 A4 A4:2" },
 ];
 
@@ -236,16 +306,48 @@ function parse(str){
 }
 SONGS.forEach(s => Object.assign(s, parse(s.notes)));
 
+const LEVELS = [
+  { n:1, name:"Five fingers",     what:"One hand rests on five neighbouring keys and steps between them." },
+  { n:2, name:"Skips and rhythm", what:"Jumps between notes, long and short notes, dotted rhythms." },
+  { n:3, name:"Moving the hand",  what:"The tune leaves the five-key spot. Black keys join in." },
+  { n:4, name:"Hands together",   what:"The left hand plays bass notes under the tune." },
+  { n:5, name:"Two-hand pieces",  what:"Octaves, both hands moving, crossing over." },
+  { n:6, name:"Flow and speed",   what:"Long patterns and quick runs." },
+];
+const PROFILES = [
+  { id:"elze",  name:"Elzė",  note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#5b8be0", first:"d1" },
+  { id:"atene", name:"Atėnė", note:"Just plays. Confetti, no scores",    scored:false, locks:false, col:"#e5534b", first:"mary" },
+  { id:"dad",   name:"Dad",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#e2b25c", first:"d1" },
+];
+const pathSongs = () => SONGS.filter(s => s.lvl >= 1).sort((a,b) => a.lvl - b.lvl || (b.drill?1:0) - (a.drill?1:0));
+
 /* ---------- Prefs (per device, best effort) ---------- */
 const store = { get(k,d){ try{ const v = localStorage.getItem("riffroom."+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
                 set(k,v){ try{ localStorage.setItem("riffroom."+k, JSON.stringify(v)); }catch(e){} } };
 
+/* Per-person data: settings, stars and stats. Lives in this browser only. */
+let P = null, PD = null;               // current profile and its saved data
+function loadProfile(id){
+  P = PROFILES.find(p=>p.id===id) || PROFILES[0];
+  PD = Object.assign({ mode:"wait", names:true, song:P.first, stats:{} }, store.get("p."+P.id, {}));
+  store.set("profile", P.id);
+}
+function saveProfile(){ store.set("p."+P.id, PD); }
+const stat = id => PD.stats[id] || (PD.stats[id] = { plays:0, best:0, stars:0, last:[], hot:{} });
+const starsOf = id => (PD.stats[id] && PD.stats[id].stars) || 0;
+function levelOpen(n){
+  if (n <= 1 || !P.locks) return true;
+  const prev = SONGS.filter(s=>s.lvl===n-1);
+  return prev.filter(s=>starsOf(s.id)>=3).length >= Math.min(3, prev.length);
+}
+loadProfile(store.get("profile", "elze"));
+
 /* ---------- State ---------- */
 const S = {
-  song: SONGS.find(s=>s.id===store.get("song","ode")) || SONGS[3],
-  mode: store.get("mode","wait"),       // "wait" | "flow"
+  song: SONGS[0],
+  mode: PD.mode,                        // "wait" | "flow"
   demo: false,                          // Listen playback on top of either mode
-  names: store.get("names", true),
+  names: PD.names,
   sound: true,
   bpm: 100,
   pos: 0, idx: 0, got: new Set(), hits: new Set(), finished: false, started: false,
@@ -295,23 +397,39 @@ function noteOff(m, src){
   if (c<=0) toneOff(m);
 }
 
+/* Scoring: a correct note is worth 100. Wait mode: a wrong key costs 50.
+   Play along: 100 on the beat, 70 close, 40 late or early; a wrong key costs 30.
+   5 stars needs a clean run: every note, no wrong keys. */
+const R = { pts:0, max:1, wrong:0, hot:{} };
+function runReset(){ R.pts = 0; R.wrong = 0; R.hot = {}; R.max = Math.max(1, S.song.ev.reduce((a,e)=>a+e.p.length,0)*100); hud(); }
+function mark(i){ R.hot[i] = (R.hot[i]||0) + 1; }
 function judge(m){
   if (S.demo || S.finished) return;
   const ev = S.song.ev;
   if (S.mode === "wait") {
     const cur = ev[S.idx]; if(!cur) return;
     if (cur.p.includes(m)) {
-      S.got.add(m); spark(m);
+      if (S.got.has(m)) return;
+      S.got.add(m); spark(m); R.pts += 100;
       if (cur.p.every(p=>S.got.has(p))) { S.idx++; S.got.clear(); if (S.idx>=ev.length) finish(); }
-    }
+    } else { R.wrong++; R.pts -= 50; mark(S.idx); }
   } else {
-    // generous window, no penalty for anything else
+    let best = -1, bd = 9;
     for (let i=0;i<ev.length;i++){
-      const e = ev[i]; if (Math.abs(e.t - S.pos) > .6) continue;
-      const key = i+":"+m;
-      if (e.p.includes(m) && !S.hits.has(key)) { S.hits.add(key); spark(m); break; }
+      const e = ev[i], d = Math.abs(e.t - S.pos); if (d > .6) continue;
+      if (e.p.includes(m) && !S.hits.has(i+":"+m) && d < bd) { best = i; bd = d; }
     }
+    if (best >= 0) { S.hits.add(best+":"+m); spark(m); R.pts += bd <= .15 ? 100 : bd <= .35 ? 70 : 40; }
+    else if (S.pos > ev[0].t - 1) { R.wrong++; R.pts -= 30;
+      let ni = 0, nd = 1e9; ev.forEach((e,i)=>{ const d=Math.abs(e.t-S.pos); if(d<nd){nd=d;ni=i;} }); mark(ni); }
   }
+  hud();
+}
+function hud(){
+  const h = $("hud"); if (!h || !P) return;
+  h.hidden = !P.scored || S.demo || !!S.song.practice;
+  $("hudScore").textContent = Math.round(Math.max(0, R.pts) / R.max * 10000).toLocaleString("en-US");
+  $("hudWrong").textContent = R.wrong;
 }
 
 /* ---------- Song / mode control ---------- */
@@ -326,40 +444,95 @@ function computeRange(){
   S.lo = lo; S.hi = hi;
 }
 function reset(){
-  S.idx = 0; S.go = false; S.got.clear(); S.hits.clear(); S.finished = false;
+  S.idx = 0; S.go = false; S.got.clear(); S.hits.clear(); S.finished = false; runReset();
   const first = S.song.ev[0].t;
   S.pos = first - (S.mode==="wait" ? 2.5 : 4);
   $("done").hidden = true;
   stopDemo(true);
 }
 function setSong(s){
-  S.song = s; store.set("song", s.id); S.bpm = s.bpm;
+  S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); } S.bpm = s.bpm;
   $("tempo").value = s.bpm; $("tempoOut").value = s.bpm;
-  $("songTitle").textContent = s.title; $("songMeta").textContent = `${s.level} · ${s.hand}`;
-  computeRange(); reset(); renderList();
+  $("songTitle").textContent = s.title;
+  $("songMeta").textContent = s.lvl ? `Level ${s.lvl} · ${s.hand}` : s.hand;
+  computeRange(); reset(); renderList(); levelOpenBefore = s.lvl ? levelOpen(s.lvl+1) : true;
   if (!S.started) hint.hidden = false;
   hint.textContent = S.mode==="wait" ? "Press the glowing key" : "Play each note as it reaches the line";
 }
 function setMode(m){
-  S.mode = m; store.set("mode", m);
+  S.mode = m; PD.mode = m; saveProfile();
   $("mWait").setAttribute("aria-pressed", m==="wait"); $("mFlow").setAttribute("aria-pressed", m==="flow");
   hint.textContent = m==="wait" ? "Press the glowing key" : "Play each note as it reaches the line";
   reset();
 }
 function finish(){
+  if (S.finished) return;
   S.finished = true;
-  const n = S.song.ev.length;
-  $("doneTitle").textContent = ["You played it!","Nailed it!","Encore!"][Math.floor(Math.random()*3)];
-  $("doneText").textContent = S.mode==="wait" ? `${S.song.title}, all ${n} notes.`
-    : `${S.song.title}. You caught ${new Set([...S.hits].map(k=>k.split(":")[0])).size} of ${n} notes.`;
+  const s = S.song, ev = s.ev, n = ev.length;
+  if (S.mode === "flow") ev.forEach((e,i) => e.p.forEach(m => { if (!S.hits.has(i+":"+m)) mark(i); }));
+  const missed = S.mode === "flow" ? ev.reduce((a,e,i)=>a+e.p.filter(m=>!S.hits.has(i+":"+m)).length,0) : 0;
+  const pct = Math.max(0, R.pts) / R.max;
+  const clean = R.wrong === 0 && missed === 0 && (S.mode === "wait" || pct >= .85);
+  const stars = clean ? 5 : pct >= .9 ? 4 : pct >= .75 ? 3 : pct >= .55 ? 2 : 1;
+  const score = Math.round(pct * 10000);
+  const scored = P.scored && !s.practice;
+  let st = null, newBest = false;
+  if (scored) {
+    st = stat(s.id);
+    st.plays++; newBest = score > st.best; st.best = Math.max(st.best, score); st.stars = Math.max(st.stars, stars);
+    st.last = st.last.concat(Math.round(pct*100)).slice(-5);
+    Object.entries(R.hot).forEach(([i,c]) => st.hot[i] = (st.hot[i]||0) + c);
+    saveProfile();
+  }
+  // trickiest bit: the 4-note window with the most slips this run
+  let hotAt = -1, hotN = 0;
+  for (let i=0;i<n;i++){ let c=0; for(let j=i;j<Math.min(n,i+4);j++) c += R.hot[j]||0; if (c>hotN){hotN=c;hotAt=i;} }
+  S.hotAt = hotAt;
+
+  $("doneTitle").textContent = !scored ? ["You played it!","Nailed it!","Encore!"][Math.floor(Math.random()*3)]
+    : ["Keep going","Getting there","Good run","Great run","Flawless!"][stars-1];
+  $("doneStars").hidden = !scored;
+  $("doneStars").innerHTML = scored ? [1,2,3,4,5].map(k=>`<i class="${k<=stars?"on":""}" style="animation-delay:${k*120}ms">★</i>`).join("") : "";
+  $("doneScore").hidden = !scored;
+  if (scored) $("doneScore").innerHTML = `<b>${score.toLocaleString("en-US")}</b>${newBest && st.plays>1 ? '<span class="tag">New best</span>' : ""}`;
+  const parts = [];
+  if (scored) {
+    parts.push(`${Math.round(pct*100)}% · ${R.wrong} wrong key${R.wrong===1?"":"s"}${S.mode==="flow" ? ` · ${missed} missed` : ""}`);
+    parts.push(`Best ${st.best.toLocaleString("en-US")} · played ${st.plays}× · last runs ${st.last.join(", ")}%`);
+    if (stars < 5) parts.push(S.mode==="wait" ? "5 stars: play it with no wrong keys." : "5 stars: catch every note with no wrong keys.");
+  } else parts.push(s.practice ? "That tricky bit, done." : `${s.title}, all ${n} notes.`);
+  $("doneText").replaceChildren(...parts.map(t => { const el = document.createElement("span"); el.textContent = t; return el; }));
+  const tricky = $("tricky");
+  tricky.hidden = !(hotAt >= 0 && hotN > 0 && !s.practice);
+  if (!tricky.hidden) {
+    const notes = ev.slice(hotAt, hotAt+4).map(e=>e.p.map(m=>NAMES[m%12]).join("+")).join(" ");
+    $("trickyText").textContent = `Trickiest bit: notes ${hotAt+1}–${Math.min(n,hotAt+4)} (${notes})`;
+  }
+  const nx = nextSong(s);
+  $("nextBtn").hidden = !nx || !!s.practice; $("backBtn").hidden = !s.practice;
+  if (nx) $("nextBtn").textContent = `Next: ${nx.title.replace("Warm-up: ","")}`;
+  if (scored && s.lvl && !levelOpenBefore && levelOpen(s.lvl+1) && LEVELS[s.lvl]) flash(`Level ${s.lvl+1} unlocked: ${LEVELS[s.lvl].name}!`, 5000);
   setTimeout(()=>{ if(S.finished) $("done").hidden = false; }, 500);
-  confetti();
+  confetti(); hud();
+}
+let levelOpenBefore = true;
+function nextSong(s){
+  if (!s.lvl) return null;
+  const list = pathSongs(), i = list.indexOf(s.practice ? s.parent : s);
+  for (let j=i+1;j<list.length;j++) if (levelOpen(list[j].lvl)) return list[j];
+  return null;
+}
+function practiceBit(){
+  const base = S.song, a = Math.max(0, S.hotAt-1), b = Math.min(base.ev.length, S.hotAt+5);
+  const slice = base.ev.slice(a,b), t0 = slice[0].t;
+  const ev = slice.map(e=>({ t:e.t-t0, d:e.d, p:e.p.slice() })), last = ev[ev.length-1];
+  setSong({ id:"practice", practice:true, parent:base, title:base.title+" · tricky bit", lvl:base.lvl, hand:"practise until it's smooth", bpm:base.bpm, ev, end:last.t+last.d });
 }
 
 /* Listen: plays the riff at the chosen speed so you hear how it goes */
 let demoOff = [];
 function startDemo(){
-  audio(); reset(); S.demo = true; S.pos = S.song.ev[0].t - 1.5; S.demoNext = 0;
+  audio(); reset(); S.demo = true; hud(); S.pos = S.song.ev[0].t - 1.5; S.demoNext = 0;
   $("listenBtn").textContent = "■ Stop"; hint.hidden = true;
 }
 function stopDemo(silent){
@@ -367,6 +540,7 @@ function stopDemo(silent){
   S.demo = false; demoOff.forEach(([m])=>noteOff(m,"demo")); demoOff = [];
   $("listenBtn").textContent = "▶ Listen";
   if (!silent) { reset(); flash("Your turn"); }
+  hud();
 }
 
 /* ---------- MIDI (Kawai CA401 over Bluetooth or USB) ---------- */
@@ -583,7 +757,7 @@ function toSong(midi, name, melodyOnly){
     return { t:(g.ticks-t0)/ppq, d:Math.max(.25, g.dt/ppq), p };
   });
   const last = ev[ev.length-1];
-  return { id:"u"+Date.now(), user:true, title:name, level:"Your MIDI files",
+  return { id:"u"+Date.now(), user:true, title:name, lvl:0,
     hand: melodyOnly ? "tune only" : "both hands",
     bpm: Math.round(Math.min(160, Math.max(40, midi.header.tempos[0]?.bpm || 100))),
     ev, end: last.t + last.d };
@@ -606,55 +780,92 @@ async function importMidi(file){
     flash(`Added ${song.title}: ${song.ev.length} notes, ${song.hand}.`);
   });
 }
-function saveImports(){ store.set("imports", SONGS.filter(s=>s.user).map(({id,title,level,hand,bpm,ev,end,user})=>({id,title,level,hand,bpm,ev,end,user}))); }
-store.get("imports", []).forEach(s => SONGS.push(s));
+function saveImports(){ store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user})=>({id,title,lvl,hand,bpm,ev,end,user}))); }
+store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
 
 /* ---------- UI wiring ---------- */
 function flash(msg, ms=3000){ toast.textContent = msg; toast.hidden = false; clearTimeout(flash.t); flash.t = setTimeout(()=>toast.hidden=true, ms); }
+function starRow(n){ return `<span class="stars" aria-label="${n} of 5 stars">${[1,2,3,4,5].map(k=>`<i class="${k<=n?"on":""}">★</i>`).join("")}</span>`; }
+function songRow(s, open){
+  const li = document.createElement("li");
+  const b = document.createElement("button"); b.className = "song" + (s.drill ? " drill" : "");
+  b.setAttribute("aria-current", s===S.song || S.song.parent===s);
+  b.disabled = !open;
+  const right = P.scored && s.lvl ? starRow(starsOf(s.id)) : `<span class="len">${s.ev.length} notes</span>`;
+  const pcs = [...new Set(s.ev.flatMap(e=>e.p.map(p=>p%12)))].sort((a,c)=>a-c);
+  b.innerHTML = `<span class="dots">${pcs.map(p=>`<i style="background:${PCOL[p]}"></i>`).join("")}</span>
+    <span class="nm"><b></b><small></small></span>${right}`;
+  b.querySelector("b").textContent = s.title; b.querySelector("small").textContent = s.hand;
+  b.onclick = () => { setSong(s); $("sheet").hidden = true; };
+  li.appendChild(b);
+  if (s.user) { li.className = "has-del"; const x = document.createElement("button"); x.className = "c del"; x.textContent = "Remove"; x.setAttribute("aria-label","Remove "+s.title);
+    x.onclick = () => { const i = SONGS.indexOf(s); SONGS.splice(i,1); saveImports(); if (S.song===s) setSong(SONGS[0]); else renderList(); };
+    li.appendChild(x); }
+  return li;
+}
 function renderList(){
-  const groups = ["Little hands","Easy","A step up","Your MIDI files"];
-  $("songList").innerHTML = "";
-  groups.forEach(gname => {
-    const wrap = document.createElement("div"); wrap.className = "group";
-    wrap.innerHTML = `<h3>${gname}</h3><ul></ul>`;
-    const list = SONGS.filter(s=>s.level===gname);
-    if (!list.length && gname!=="Your MIDI files") return;
-    list.forEach(s => {
-      const pcs = [...new Set(s.ev.flatMap(e=>e.p.map(p=>p%12)))].sort((a,b)=>a-b);
-      const li = document.createElement("li");
-      const b = document.createElement("button"); b.className = "song"; b.setAttribute("aria-current", s===S.song);
-      b.innerHTML = `<span class="dots">${pcs.map(p=>`<i style="background:${PCOL[p]}"></i>`).join("")}</span>
-        <span><b></b><small>${s.hand}</small></span><span class="len">${s.ev.length} notes</span>`;
-      b.querySelector("b").textContent = s.title;
-      b.onclick = () => { setSong(s); $("sheet").hidden = true; };
-      li.appendChild(b);
-      if (s.user) { li.className = "has-del"; const x = document.createElement("button"); x.className = "c del"; x.textContent = "Remove"; x.setAttribute("aria-label","Remove "+s.title);
-        x.onclick = () => { const i = SONGS.indexOf(s); SONGS.splice(i,1); saveImports(); if (S.song===s) setSong(SONGS[0]); else renderList(); };
-        li.appendChild(x); } wrap.querySelector("ul").appendChild(li);
-    });
-    if (gname==="Your MIDI files") {
-      const add = document.createElement("div"); add.className = "import";
-      add.innerHTML = `<label class="big primary" for="midiFile">+ Add a MIDI file</label>
-        <input type="file" id="midiFile" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
-        <p>Free, legal piano MIDIs: Mutopia Project and IMSLP (public-domain classics).</p>`;
-      add.querySelector("input").onchange = e => { const f = e.target.files[0]; if (f) importMidi(f); e.target.value = ""; };
-      wrap.appendChild(add);
-    }
-    $("songList").appendChild(wrap);
+  const root = $("songList"); root.innerHTML = "";
+  $("sheetWho").textContent = P.name;
+  LEVELS.forEach(L => {
+    const list = pathSongs().filter(s=>s.lvl===L.n), open = levelOpen(L.n);
+    const got = list.reduce((a,s)=>a+starsOf(s.id),0), max = list.length*5;
+    const wrap = document.createElement("section"); wrap.className = "group" + (open ? "" : " locked");
+    wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">Level ${L.n}</span> <span class="lvl-name"></span></h3>
+      ${P.scored ? `<span class="lvl-stars">${got}/${max} ★</span>` : ""}</div><p class="lvl-what"></p><ul></ul>`;
+    wrap.querySelector(".lvl-name").textContent = L.name;
+    wrap.querySelector(".lvl-what").textContent = open ? L.what
+      : `Locked. Get 3 stars on ${Math.min(3, SONGS.filter(s=>s.lvl===L.n-1).length)} pieces in Level ${L.n-1} to open it.`;
+    list.forEach(s => wrap.querySelector("ul").appendChild(songRow(s, open)));
+    root.appendChild(wrap);
   });
+  const wrap = document.createElement("section"); wrap.className = "group";
+  wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">Your MIDI files</span></h3></div><ul></ul>`;
+  SONGS.filter(s=>s.user).forEach(s => wrap.querySelector("ul").appendChild(songRow(s, true)));
+  const add = document.createElement("div"); add.className = "import";
+  add.innerHTML = `<label class="big primary" for="midiFile">+ Add a MIDI file</label>
+    <input type="file" id="midiFile" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
+    <p>Free, legal piano MIDIs: Mutopia Project and IMSLP (public-domain classics).</p>`;
+  add.querySelector("input").onchange = e => { const f = e.target.files[0]; if (f) importMidi(f); e.target.value = ""; };
+  wrap.appendChild(add); root.appendChild(wrap);
+}
+function renderWho(){
+  const b = $("whoBtn"); b.querySelector(".av").textContent = P.name[0]; b.querySelector(".av").style.background = P.col;
+  b.querySelector(".who-name").textContent = P.name;
+  $("whoList").innerHTML = "";
+  PROFILES.forEach(p => {
+    const st = store.get("p."+p.id, {}); const total = Object.values(st.stats||{}).reduce((a,x)=>a+(x.stars||0),0);
+    const btn = document.createElement("button"); btn.className = "who-card"; btn.setAttribute("aria-current", p===P);
+    btn.innerHTML = `<span class="av big-av"></span><span><b></b><small></small></span>${p.scored ? `<span class="lvl-stars">${total} ★</span>` : ""}`;
+    btn.querySelector(".av").textContent = p.name[0]; btn.querySelector(".av").style.background = p.col;
+    btn.querySelector("b").textContent = p.name; btn.querySelector("small").textContent = p.note;
+    btn.onclick = () => { store.set("profile.chosen", true); $("whoClose").hidden = false; switchProfile(p.id); };
+    $("whoList").appendChild(btn);
+  });
+}
+function switchProfile(id){
+  loadProfile(id); S.names = PD.names; $("namesBtn").setAttribute("aria-pressed", S.names);
+  $("who").hidden = true; renderWho(); setMode(PD.mode);
+  const s = SONGS.find(x=>x.id===PD.song);
+  setSong(s && (!s.lvl || levelOpen(s.lvl)) ? s : SONGS.find(x=>x.id===P.first));
+  S.started = false; hint.hidden = false;
 }
 $("songBtn").onclick = () => { $("sheet").hidden = false; };
 $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; $("sheet").hidden = false; };
 $("againBtn").onclick = () => reset();
+$("nextBtn").onclick = () => { const nx = nextSong(S.song); if (nx) setSong(nx); };
+$("trickyBtn").onclick = () => practiceBit();
+$("backBtn").onclick = () => setSong(S.song.parent);
+$("whoBtn").onclick = () => { renderWho(); $("who").hidden = false; };
+$("whoClose").onclick = () => { $("who").hidden = true; };
 $("restartBtn").onclick = () => reset();
 $("mWait").onclick = () => setMode("wait");
 $("mFlow").onclick = () => setMode("flow");
 $("listenBtn").onclick = () => S.demo ? stopDemo(false) : startDemo();
 $("tempo").oninput = e => { S.bpm = +e.target.value; $("tempoOut").value = S.bpm; };
 $("namesBtn").setAttribute("aria-pressed", S.names);
-$("namesBtn").onclick = () => { S.names = !S.names; store.set("names", S.names); $("namesBtn").setAttribute("aria-pressed", S.names); };
+$("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
 $("pianoBtn").onclick = connectPiano;
 /* Sound unlock. iPhone mutes Web Audio when the ring/silent switch is on silent;
@@ -671,9 +882,10 @@ function unlock(){
     flash("Sound is still off. Check the phone volume and silent switch, then tap a key again. If it stays silent, open the standalone file in Chrome or Safari.", 8000); } }, 600);
 }
 ["pointerdown","touchend","keydown"].forEach(t => document.addEventListener(t, unlock, { passive:true, capture:true }));
-window.addEventListener("keydown", e => { if (e.key==="Escape") $("sheet").hidden = true; });
+window.addEventListener("keydown", e => { if (e.key==="Escape") { $("sheet").hidden = true; if (store.get("profile.chosen", false)) $("who").hidden = true; } });
 
-setMode(S.mode); setSong(SONGS.find(x=>x.id===store.get("song",""))||S.song); resize();
+switchProfile(P.id); resize();
+if (!store.get("profile.chosen", false)) { renderWho(); $("who").hidden = false; $("whoClose").hidden = true; }
 requestAnimationFrame(frame);
 })();
 </script>
