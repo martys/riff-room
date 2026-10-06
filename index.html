@@ -241,7 +241,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
           <dt>Windows</dt>
           <dd>Chrome on Windows generally can't use Bluetooth MIDI. Use the USB cable.</dd>
           <dt>iPad and iPhone</dt>
-          <dd>No iPad browser can do MIDI, so use a free MIDI browser app from the App Store. On an older iPad: <b>Web MIDI Browser</b> (works from iOS 9). On iPadOS 17.6 or newer: <b>MIDIWeb Browser</b>. Open the Riff Room address inside the app, connect the piano with the app's Bluetooth MIDI button, then tap Connect piano here. A USB cable through Apple's camera adapter also works.</dd>
+          <dd>No iPad browser can do MIDI, so use a free MIDI browser app from the App Store. Pair the piano inside that app's Bluetooth MIDI screen (not in the iPad's Bluetooth settings), close Kawai's PianoRemote, and make sure Bluetooth MIDI is on in the piano. On an older iPad: <b>Web MIDI Browser</b> (works from iOS 9). On iPadOS 17.6 or newer: <b>MIDIWeb Browser</b>. Open the Riff Room address inside the app, connect the piano with the app's Bluetooth MIDI button, then tap Connect piano here. A USB cable through Apple's camera adapter also works.</dd>
         </dl>
         <p class="small">Also check that Bluetooth MIDI is switched on in the piano's settings. The app stays silent for piano notes, since the piano makes its own sound.</p>
         <div class="row"><button class="big primary" id="pianoRetry">Try again</button></div>
@@ -675,13 +675,21 @@ async function connectPiano(quiet){
   }
 }
 let firstNoteSeen = false;
+let noteWatch = 0;
 function wireInputs(quiet){
   const ins = [...midiAccess.inputs.values()];
   ins.forEach(i => i.onmidimessage = onMidi);
-  const btn = $("pianoBtn");
-  if (ins.length) { btn.classList.add("on"); btn.textContent = "Piano: " + (ins[0].name || "connected"); $("pianoHelp").hidden = true;
-    if (!quiet) flash(`Connected: ${ins.map(i=>i.name).join(", ")}. Play a key to check.`); firstNoteSeen = false; }
-  else { btn.classList.remove("on"); btn.textContent = "Connect piano"; if (!quiet) showPianoHelp("No piano found yet."); }
+  const btn = $("pianoBtn"), names = ins.map(i => i.name || "unnamed");
+  const looksVirtual = n => /session|network|iac|bus|virtual/i.test(n);
+  const real = names.filter(n => !looksVirtual(n));
+  if (ins.length) { btn.classList.add("on"); btn.textContent = "MIDI: " + (real[0] || names[0]); $("pianoHelp").hidden = true; firstNoteSeen = false;
+    if (!quiet) {
+      if (!real.length) showPianoHelp(`Only found "${names.join(", ")}". That's the device's own network MIDI, not the piano. Connect the piano over Bluetooth MIDI first (see below), then tap Try again.`);
+      else flash(`Found: ${names.join(", ")}. Press a key on the piano to check.`, 6000);
+      clearTimeout(noteWatch);
+      if (real.length) noteWatch = setTimeout(() => { if (!firstNoteSeen) showPianoHelp(`Connected to "${names.join(", ")}", but no notes have arrived. Check that Bluetooth MIDI is on in the piano's settings and that no other app (like PianoRemote) is connected to it.`); }, 15000);
+    } }
+  else { btn.classList.remove("on"); btn.textContent = "Connect piano"; if (!quiet) showPianoHelp("No MIDI device found yet."); }
 }
 function onMidi(e){
   const [st, n, v] = e.data; const type = st & 0xf0;
