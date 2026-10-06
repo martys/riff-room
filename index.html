@@ -908,8 +908,8 @@ async function importMidi(file){
   const name = file.name.replace(/\.(mid|midi)$/i,"").replace(/[_-]+/g," ").trim().slice(0,48) || "My riff";
   // Add it straight away (both hands), keep the list open and show where it landed.
   const both = toSong(midi, name, false), tune = toSong(midi, name, true);
-  const song = Object.assign(both, { alt: tune.ev, altEnd: tune.end, altHand: tune.hand });
-  SONGS.push(song); saveImports(); renderList(); markNew(song.id);
+  const song = Object.assign(both, { alt: tune.ev, altEnd: tune.end, altHand: tune.hand, ts: Date.now() });
+  SONGS.push(song); saveImports(); renderList(); markNew(song.id); syncNow();
   flash(`Added "${song.title}" (${song.ev.length} notes, both hands). Tap it to play, or switch it to "Tune only".`, 6000);
 }
 function markNew(id){
@@ -919,10 +919,10 @@ function markNew(id){
 }
 function swapHands(s){
   if (!s.alt) return;
-  [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand];
+  [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand]; s.ts = Date.now();
   saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
 }
-function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand}))); }
+function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts}))); }
 store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
 
 /* ---------- Sheet music (rendered with abcjs from the same note data) ---------- */
@@ -1197,7 +1197,7 @@ function mergeProfile(a, b){
 function mergeAll(a, b){
   b = b || {}; const out = { profiles:{}, deleted:[...new Set([...(a.deleted||[]), ...(b.deleted||[])])] };
   new Set([...Object.keys(a.profiles||{}), ...Object.keys(b.profiles||{})]).forEach(id => out.profiles[id] = mergeProfile((a.profiles||{})[id], (b.profiles||{})[id]));
-  const byId = new Map(); [...(b.imports||[]), ...(a.imports||[])].forEach(x => byId.set(x.id, x));
+  const byId = new Map(); [...(b.imports||[]), ...(a.imports||[])].forEach(x => { const o = byId.get(x.id); if (!o || (x.ts||0) >= (o.ts||0)) byId.set(x.id, x); });
   out.imports = [...byId.values()].filter(x => !out.deleted.includes(x.id));
   return out;
 }
@@ -1206,7 +1206,9 @@ function applyMerged(m){
   store.set("imports", m.imports); store.set("deleted", m.deleted);
   PD = Object.assign({ mode:"wait", names:true, song:P.first, stats:{} }, store.get("p."+P.id, {}));
   for (let i = SONGS.length-1; i >= 0; i--) if (SONGS[i].user && !m.imports.some(x => x.id === SONGS[i].id)) SONGS.splice(i,1);
-  m.imports.forEach(x => { if (!SONGS.some(s => s.id === x.id)) { x.lvl = 0; SONGS.push(x); } });
+  m.imports.forEach(x => { const cur = SONGS.find(s => s.id === x.id);
+    if (!cur) { x.lvl = 0; SONGS.push(x); }
+    else if ((x.ts||0) > (cur.ts||0)) { Object.assign(cur, x, { lvl:0 }); if (S.song === cur) setSong(cur); } });
   renderList(); renderWho();
 }
 async function syncNow(){
@@ -1245,8 +1247,9 @@ function connectSync(code){
   code = code.trim().toLowerCase(); if (code.length < 12) { syncStatus("The family code needs at least 12 characters."); return; }
   SY.code = code; store.set("sync.code", code); renderSync(); syncNow();
 }
-document.addEventListener("visibilitychange", () => { if (document.hidden) syncNow(); else syncSoon(); });
-setInterval(() => { if (!document.hidden) syncNow(); }, 120000);
+document.addEventListener("visibilitychange", () => syncNow());          // leaving: save; coming back: fetch
+window.addEventListener("pageshow", () => syncNow());
+setInterval(() => { if (!document.hidden) syncNow(); }, 30000);                  // pick up other devices' changes
 
 /* ---------- UI wiring ---------- */
 function flash(msg, ms=3000){ toast.textContent = msg; toast.hidden = false; clearTimeout(flash.t); flash.t = setTimeout(()=>toast.hidden=true, ms); }
@@ -1321,7 +1324,7 @@ function switchProfile(id){
   setSong(s && (!s.lvl || levelOpen(s.lvl)) ? s : SONGS.find(x=>x.id===P.first));
   S.started = false; hint.hidden = false;
 }
-$("songBtn").onclick = () => { $("sheet").hidden = false; };
+$("songBtn").onclick = () => { $("sheet").hidden = false; syncNow(); };
 $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; $("sheet").hidden = false; };
