@@ -102,7 +102,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .song b { font-family: var(--font-display); font-weight: 600; font-size: 17px; display: block; }
 .song small { color: var(--muted); font-size: 12px; }
 .song .len { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.has-del { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.has-del { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92,.35); }
 .import { display: grid; gap: 8px; justify-items: start; margin-top: 6px; }
 .import label { display: inline-block; }
 .import p { margin: 0; font-size: 12px; color: var(--muted); }
@@ -905,18 +906,23 @@ async function importMidi(file){
   try { midi = new Midi(await file.arrayBuffer()); } catch(e) { return flash("That file isn't a MIDI file Riff Room can read. Look for a .mid file.", 6000); }
   if (!midi.tracks.some(t=>t.notes.length)) return flash("That MIDI file has no notes in it.", 5000);
   const name = file.name.replace(/\.(mid|midi)$/i,"").replace(/[_-]+/g," ").trim().slice(0,48) || "My riff";
-  const card = $("songList"); const box = document.createElement("div"); box.className = "choice";
-  box.innerHTML = `<h3 class="sheet-sub"></h3><p>Which part do you want to play?</p>
-    <div class="row"><button class="big primary" data-m="1">Tune only (easier)</button><button class="big" data-m="0">Both hands</button></div>`;
-  box.querySelector("h3").textContent = name;
-  card.prepend(box); box.scrollIntoView({ block:"nearest" });
-  box.querySelectorAll("button").forEach(b => b.onclick = () => {
-    const song = toSong(midi, name, b.dataset.m === "1");
-    SONGS.push(song); saveImports(); box.remove(); setSong(song); $("sheet").hidden = true;
-    flash(`Added ${song.title}: ${song.ev.length} notes, ${song.hand}.`);
-  });
+  // Add it straight away (both hands), keep the list open and show where it landed.
+  const both = toSong(midi, name, false), tune = toSong(midi, name, true);
+  const song = Object.assign(both, { alt: tune.ev, altEnd: tune.end, altHand: tune.hand });
+  SONGS.push(song); saveImports(); renderList(); markNew(song.id);
+  flash(`Added "${song.title}" (${song.ev.length} notes, both hands). Tap it to play, or switch it to "Tune only".`, 6000);
 }
-function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user})=>({id,title,lvl,hand,bpm,ev,end,user}))); }
+function markNew(id){
+  const row = document.querySelector(`[data-song="${id}"]`); if (!row) return;
+  row.classList.add("new"); row.scrollIntoView({ block:"center", behavior:"smooth" });
+  setTimeout(() => row.classList.remove("new"), 4000);
+}
+function swapHands(s){
+  if (!s.alt) return;
+  [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand];
+  saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
+}
+function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand}))); }
 store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
 
 /* ---------- Sheet music (rendered with abcjs from the same note data) ---------- */
@@ -1257,7 +1263,11 @@ function songRow(s, open){
   b.querySelector("b").textContent = s.title; b.querySelector("small").textContent = s.hand;
   b.onclick = () => { setSong(s); $("sheet").hidden = true; };
   li.appendChild(b);
-  if (s.user) { li.className = "has-del"; const x = document.createElement("button"); x.className = "c del"; x.textContent = "Remove"; x.setAttribute("aria-label","Remove "+s.title);
+  li.dataset.song = s.id;
+  if (s.user) { li.className = "has-del";
+    if (s.alt) { const h = document.createElement("button"); h.className = "c"; h.textContent = /tune/.test(s.hand) ? "Both hands" : "Tune only";
+      h.setAttribute("aria-label", `Switch ${s.title} to ${h.textContent}`); h.onclick = () => swapHands(s); li.appendChild(h); }
+    const x = document.createElement("button"); x.className = "c del"; x.textContent = "Remove"; x.setAttribute("aria-label","Remove "+s.title);
     x.onclick = () => { const i = SONGS.indexOf(s); SONGS.splice(i,1); store.set("deleted", store.get("deleted", []).concat(s.id)); saveImports(); if (S.song===s) setSong(SONGS[0]); else renderList(); };
     li.appendChild(x); }
   return li;
