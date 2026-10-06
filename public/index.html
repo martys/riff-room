@@ -1117,7 +1117,8 @@ async function startMic(){
     return flash(why || (location.protocol !== "https:" ? "The microphone only works on an https address." : "This browser has no microphone access. On iPad, use Safari."), 9000);
   const a = audio(); if (!a) return flash("This browser has no audio support.");
   try {
-    MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+    try { MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } }); }
+    catch (e1) { if (e1 && e1.name === "NotAllowedError") throw e1; MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:true }); }   // older Safari rejects the detailed request
   } catch (e) {
     const name = (e && e.name) || "Error";
     if (why) return flash(why + ` (${name})`, 9000);
