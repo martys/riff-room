@@ -164,8 +164,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 button.rec { color: #f08a80; }
 button.mic { border-color: var(--brass); color: var(--brass); }
 button.mic.on { background: var(--brass); color: #1a1408; }
-.micpill { position: absolute; right: 16px; bottom: calc(var(--kh, 30%) + 10px); top: auto; display: flex; align-items: center; gap: 8px; background: rgba(18,21,31,.85); border: 1px solid var(--brass); border-radius: 999px; padding: 6px 12px; font-size: 13px; z-index: 3; pointer-events: none; }
-.micpill .lvl { width: 60px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.micpill { position: absolute; right: 16px; bottom: calc(var(--kh, 30%) + 10px); top: auto; display: flex; align-items: center; gap: 8px; background: rgba(18,21,31,.85); border: 1px solid var(--brass); border-radius: 999px; padding: 6px 12px; font-size: 13px; z-index: 3; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 32px); }
+.micpill .lvl { position: relative; width: 60px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.micpill .lvl u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--fg); opacity: .6; }
+.micpill label { color: var(--muted); font-size: 12px; }
+.micpill input { width: 90px; accent-color: var(--brass); }
+.micpill output { min-width: 1.4em; font-variant-numeric: tabular-nums; }
 .micpill .lvl i { display: block; height: 100%; width: 0; background: var(--brass); transition: width .08s linear; }
 .micpill b { min-width: 2.6em; font-variant-numeric: tabular-nums; }
 .help { gap: 10px; }
@@ -247,7 +251,8 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <div class="row"><button class="big primary" id="pianoRetry">Try again</button></div>
       </div>
     </div>
-    <div class="micpill" id="micPill" hidden><span>Mic</span><span class="lvl"><i id="micLvl"></i></span><b id="micNote">–</b></div>
+    <div class="micpill" id="micPill" hidden><span>Mic</span><span class="lvl"><i id="micLvl"></i><u id="micGate"></u></span><b id="micNote">–</b>
+      <label for="micSens">Sensitivity</label><input type="range" id="micSens" min="1" max="10" step="1"><output id="micSensOut"></output></div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
@@ -1063,14 +1068,18 @@ function stopRec(){
 /* ---------- Microphone: hear an acoustic or digital piano and detect single notes ----------
    YIN pitch detection on ~43 ms windows. A note counts once the same pitch holds for 2 frames;
    a jump in loudness on the same pitch counts as a new key press. Chords: only one note is heard. */
-const MIC = { on:false, stream:null, src:null, an:null, buf:null, floor:0, cal:[], cur:-1, cand:-1, candN:0, lvl:0, peak:0, raf:0 };
+/* Sensitivity 1–10 (per device). Higher = quieter notes count, but more risk of picking up noise. */
+const micSens = () => MIC.sens;
+function micParams(){ const k = micSens();
+  return { gateMul: Math.max(1.35, 4 - k * 0.27), minGate: 0.006 * Math.pow(0.62, k - 1), conf: Math.max(0.5, 0.82 - k * 0.032), attackMul: Math.max(1.35, 2 - k * 0.06) }; }
+const MIC = { sens: store.get("mic.sens", 8), on:false, stream:null, src:null, an:null, buf:null, floor:0, cal:[], cur:-1, cand:-1, candN:0, lvl:0, peak:0, raf:0 };
 function yin(buf, sr){
   const W = buf.length >> 1, minF = 60, maxF = 2100, tMin = Math.floor(sr / maxF), tMax = Math.min(W - 1, Math.floor(sr / minF));
   const d = new Float32Array(tMax + 1);
   for (let t = 1; t <= tMax; t++) { let sum = 0; for (let i = 0; i < W; i++) { const x = buf[i] - buf[i + t]; sum += x * x; } d[t] = sum; }
   let run = 0, tau = -1;
   for (let t = 1; t <= tMax; t++) { run += d[t]; d[t] = run ? d[t] * t / run : 1; }
-  for (let t = tMin; t <= tMax; t++) if (d[t] < 0.12) { while (t + 1 <= tMax && d[t+1] < d[t]) t++; tau = t; break; }
+  for (let t = tMin; t <= tMax; t++) if (d[t] < 0.15) { while (t + 1 <= tMax && d[t+1] < d[t]) t++; tau = t; break; }
   if (tau < 0) return { f:0, p:0 };
   const a = d[tau-1] ?? d[tau], b = d[tau], c = d[tau+1] ?? d[tau], den = a + c - 2 * b;
   const t2 = den ? tau + (a - c) / (2 * den) : tau;
@@ -1086,12 +1095,12 @@ function micFrame(){
   let e = 0; for (let i = 0; i < b.length; i++) e += b[i] * b[i]; const rms = Math.sqrt(e / b.length);
   if (S.demo) { if (MIC.cur >= 0) { noteOff(MIC.cur, "mic"); MIC.cur = -1; } micUi(); return; }
   if (MIC.cal.length < 25) { MIC.cal.push(rms); if (MIC.cal.length === 25) MIC.floor = MIC.cal.slice().sort((x,y)=>x-y)[12]; micUi(); return; }
-  const gate = Math.max(0.006, MIC.floor * 3.5);
-  const attack = rms > gate && rms > MIC.lvl * 1.8 + gate * .5;   // a fresh key press
+  const P = micParams(), gate = Math.max(P.minGate, MIC.floor * P.gateMul);
+  const attack = rms > gate && rms > MIC.lvl * P.attackMul + gate * .5;   // a fresh key press
   MIC.lvl = MIC.lvl * 0.85 + rms * 0.15; MIC.peak = Math.max(rms, MIC.peak * 0.96);
   if (rms < gate) { MIC.candN = 0; if (MIC.cur >= 0 && rms < gate * .7) { noteOff(MIC.cur, "mic"); MIC.cur = -1; } micUi(); return; }
   const { f, p } = yin(b, ac.sampleRate);
-  if (!f || p < 0.75) { micUi(); return; }
+  if (!f || p < P.conf) { micUi(); return; }
   const m = freqToMidi(f); if (m < 36 || m > 96) return;
   if (m === MIC.cand) MIC.candN++; else { MIC.cand = m; MIC.candN = 1; }
   if (MIC.candN === 2 || (attack && MIC.candN >= 1 && m === MIC.cur)) {
@@ -1104,7 +1113,9 @@ function micUi(){
   const pill = $("micPill"); if (!pill) return;
   pill.hidden = !MIC.on;
   $("micNote").textContent = MIC.cal.length < 25 ? "quiet please…" : MIC.cur >= 0 ? NAMES[MIC.cur % 12] + (Math.floor(MIC.cur / 12) - 1) : "–";
-  $("micLvl").style.width = Math.min(100, Math.round(MIC.peak / Math.max(.02, MIC.floor * 40) * 100)) + "%";
+  const P = micParams(), gate = Math.max(P.minGate, MIC.floor * P.gateMul);
+  $("micLvl").style.width = Math.min(100, Math.round(MIC.peak / (gate * 6) * 100)) + "%";
+  $("micGate").style.left = Math.round(100 / 6) + "%";
 }
 async function startMic(){
   const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -1135,7 +1146,10 @@ async function startMic(){
   if (a.state === "suspended") await a.resume();
   MIC.starting = false;
   MIC.src = a.createMediaStreamSource(MIC.stream); MIC.an = a.createAnalyser(); MIC.an.fftSize = 2048;
-  MIC.src.connect(MIC.an); MIC.buf = new Float32Array(MIC.an.fftSize);
+  // band-limit to the piano's useful range: drops mains hum and rumble that would raise the noise floor
+  const hp = a.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 70;
+  const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 4000;
+  MIC.src.connect(hp); hp.connect(lp); lp.connect(MIC.an); MIC.buf = new Float32Array(MIC.an.fftSize);
   MIC.on = true; MIC.cal = []; MIC.cur = -1; MIC.cand = -1; MIC.lvl = 0; MIC.peak = 0;
   MIC.soundWas = S.sound; S.sound = false; $("soundBtn").setAttribute("aria-pressed", false);   // the app mustn't hear itself
   $("micBtn").classList.add("on"); $("micBtn").textContent = "Mic on";
@@ -1323,6 +1337,8 @@ $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProf
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
 $("pianoBtn").onclick = () => connectPiano(false);
 $("micBtn").onclick = () => MIC.on ? stopMic() : startMic();
+$("micSens").value = MIC.sens; $("micSensOut").value = MIC.sens;
+$("micSens").oninput = e => { MIC.sens = +e.target.value; $("micSensOut").value = MIC.sens; store.set("mic.sens", MIC.sens); };
 $("pianoRetry").onclick = () => connectPiano(false);
 $("pianoHelpClose").onclick = () => { $("pianoHelp").hidden = true; };
 $("scoreBtn").onclick = () => setSheet(!SH.open);
