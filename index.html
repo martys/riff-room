@@ -1116,10 +1116,14 @@ async function startMic(){
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
     return flash(why || (location.protocol !== "https:" ? "The microphone only works on an https address." : "This browser has no microphone access. On iPad, use Safari."), 9000);
   const a = audio(); if (!a) return flash("This browser has no audio support.");
+  // iOS: "playback" (set so sound works with the silent switch on) forbids recording. Switch to play-and-record first.
+  MIC.starting = true;
+  try { if (navigator.audioSession) navigator.audioSession.type = "play-and-record"; } catch(e) {}
   try {
     try { MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } }); }
     catch (e1) { if (e1 && e1.name === "NotAllowedError") throw e1; MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:true }); }   // older Safari rejects the detailed request
   } catch (e) {
+    MIC.starting = false; try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(_) {}
     const name = (e && e.name) || "Error";
     if (why) return flash(why + ` (${name})`, 9000);
     return flash(name === "NotAllowedError"
@@ -1129,6 +1133,7 @@ async function startMic(){
       : `Couldn't open the microphone (${name}: ${e && e.message || "no details"}).`, 10000);
   }
   if (a.state === "suspended") await a.resume();
+  MIC.starting = false;
   MIC.src = a.createMediaStreamSource(MIC.stream); MIC.an = a.createAnalyser(); MIC.an.fftSize = 2048;
   MIC.src.connect(MIC.an); MIC.buf = new Float32Array(MIC.an.fftSize);
   MIC.on = true; MIC.cal = []; MIC.cur = -1; MIC.cand = -1; MIC.lvl = 0; MIC.peak = 0;
@@ -1142,6 +1147,7 @@ function stopMic(){
   if (MIC.cur >= 0) noteOff(MIC.cur, "mic"); MIC.cur = -1;
   try { MIC.src && MIC.src.disconnect(); } catch(e) {}
   if (MIC.stream) MIC.stream.getTracks().forEach(t => t.stop());
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e) {}
   S.sound = MIC.soundWas !== false; $("soundBtn").setAttribute("aria-pressed", S.sound);
   $("micBtn").classList.remove("on"); $("micBtn").textContent = "Use mic"; micUi();
 }
@@ -1327,7 +1333,7 @@ $("recBtn").onclick = () => REC.on ? stopRec() : startRec();
 const SILENT = "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
 let silentEl = null;
 function unlock(){
-  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e) {}
+  try { if (navigator.audioSession && !MIC.on && !MIC.starting) navigator.audioSession.type = "playback"; } catch(e) {}
   const a = audio(); if (!a) return;
   try { const b = a.createBuffer(1,1,22050), src = a.createBufferSource(); src.buffer = b; src.connect(a.destination); src.start(0); } catch(e) {}
   if (!silentEl) { silentEl = new Audio(SILENT); silentEl.loop = true; silentEl.setAttribute("playsinline",""); silentEl.volume = 0.01; }
