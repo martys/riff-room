@@ -411,8 +411,9 @@ const LEVELS = [
 const PROFILES = [
   { id:"elze",  name:"Elzė",  note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#5b8be0", first:"d1" },
   { id:"atene", name:"Atėnė", note:"Just plays. Confetti, no scores",    scored:false, locks:false, col:"#e5534b", first:"mary" },
-  { id:"dad",   name:"Dad",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#e2b25c", first:"d1" },
-  { id:"mom",   name:"Mom",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#63b85a", first:"d1" },
+  { id:"dad",   name:"Tėtis",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#e2b25c", first:"d1" },
+  { id:"mom",   name:"Mama",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#63b85a", first:"d1" },
+  { id:"karolis", name:"Karolis", note:"Climbs the levels and earns stars", scored:true, locks:true, col:"#b07ad8", first:"d1" },
 ];
 const pathSongs = () => SONGS.filter(s => s.lvl >= 1 && !s.whole).sort((a,b) => a.lvl - b.lvl || (b.drill?1:0) - (a.drill?1:0));
 
