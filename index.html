@@ -162,6 +162,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .recpill i { width: 9px; height: 9px; border-radius: 50%; background: #e5534b; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .2; } }
 button.rec { color: #f08a80; }
+button.mic { border-color: var(--brass); color: var(--brass); }
+button.mic.on { background: var(--brass); color: #1a1408; }
+.micpill { position: absolute; right: 16px; bottom: calc(var(--kh, 30%) + 10px); top: auto; display: flex; align-items: center; gap: 8px; background: rgba(18,21,31,.85); border: 1px solid var(--brass); border-radius: 999px; padding: 6px 12px; font-size: 13px; z-index: 3; pointer-events: none; }
+.micpill .lvl { width: 60px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.micpill .lvl i { display: block; height: 100%; width: 0; background: var(--brass); transition: width .08s linear; }
+.micpill b { min-width: 2.6em; font-variant-numeric: tabular-nums; }
 .help { gap: 10px; }
 .help p { margin: 0; font-size: 14px; line-height: 1.45; }
 .help .why { color: var(--brass); font-weight: 700; }
@@ -210,6 +216,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <button class="c rec" id="recBtn">● Record</button>
       <button class="c" id="soundBtn" aria-pressed="true">♪ App sound</button>
       <button class="c piano" id="pianoBtn">Connect piano</button>
+      <button class="c mic" id="micBtn">Use mic</button>
     </div>
   </header>
 
@@ -240,6 +247,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <div class="row"><button class="big primary" id="pianoRetry">Try again</button></div>
       </div>
     </div>
+    <div class="micpill" id="micPill" hidden><span>Mic</span><span class="lvl"><i id="micLvl"></i></span><b id="micNote">–</b></div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
@@ -467,10 +475,10 @@ function toneOff(m, tc=.07){
 /* ---------- Input: every source (touch, computer keys, MIDI, Listen) lands here ---------- */
 function noteOn(m, src){
   S.held.set(m, (S.held.get(m)||0)+1);
-  if (REC.on && src !== "demo") { recOn(m); const fromPiano = src === "midi"; if (S.sound && !(fromPiano && S.pianoMutes)) toneOn(m); spark(m); return; }
-  const fromPiano = src === "midi";
+  const fromPiano = src === "midi" || src === "mic";
+  if (REC.on && src !== "demo") { recOn(m); if (S.sound && !(fromPiano && S.pianoMutes)) toneOn(m); spark(m); return; }
   if (S.sound && !(fromPiano && S.pianoMutes) || src === "demo") toneOn(m);
-  if (src !== "demo") judge(m);
+  if (src !== "demo") judge(m, src);
   if (src !== "demo") S.go = true;
   if (!S.started && src !== "demo") { S.started = true; hint.hidden = true; }
 }
@@ -486,8 +494,31 @@ function noteOff(m, src){
 const R = { pts:0, max:1, wrong:0, hot:{} };
 function runReset(){ R.pts = 0; R.wrong = 0; R.hot = {}; R.max = Math.max(1, S.song.ev.reduce((a,e)=>a+e.p.length,0)*100); hud(); }
 function mark(i){ R.hot[i] = (R.hot[i]||0) + 1; }
-function judge(m){
+function micHit(m, notes){ return notes.find(n => n === m || n === m + 12 || n === m - 12); }
+function judgeMic(m){
+  const ev = S.song.ev, pc = x => ((x % 12) + 12) % 12;
+  if (S.mode === "wait") {
+    const cur = ev[S.idx]; if (!cur) return;
+    if (micHit(m, cur.p) != null) {
+      cur.p.forEach(n => spark(n)); R.pts += 100 * cur.p.length;
+      S.idx++; S.got.clear(); if (S.idx >= ev.length) finish();
+    } else {
+      const prev = ev[S.idx-1];                       // the last note may still be ringing
+      if (!(prev && prev.p.some(n => pc(n) === pc(m)))) { R.wrong++; R.pts -= 50; mark(S.idx); }
+    }
+  } else {
+    let best = -1, bd = 9;
+    ev.forEach((e,i) => { const d = Math.abs(e.t - S.pos); if (d <= .6 && micHit(m, e.p) != null && !S.hits.has(i+":"+e.p[0]) && d < bd) { best = i; bd = d; } });
+    if (best >= 0) { const e = ev[best]; e.p.forEach(n => { S.hits.add(best+":"+n); spark(n); }); R.pts += (bd <= .15 ? 100 : bd <= .35 ? 70 : 40) * e.p.length; }
+    else if (S.pos > ev[0].t - 1 && !ev.some(e => e.t < S.pos && e.t > S.pos - 1.5 && e.p.some(n => pc(n) === pc(m)))) {
+      R.wrong++; R.pts -= 30; let ni = 0, nd = 1e9; ev.forEach((e,i)=>{ const d=Math.abs(e.t-S.pos); if(d<nd){nd=d;ni=i;} }); mark(ni);
+    }
+  }
+  hud();
+}
+function judge(m, src){
   if (S.demo || S.finished || REC.on) return;
+  if (src === "mic") return judgeMic(m);
   const ev = S.song.ev;
   if (S.mode === "wait") {
     const cur = ev[S.idx]; if(!cur) return;
@@ -616,7 +647,7 @@ function practiceBit(){
 
 /* Listen: plays the riff at the chosen speed so you hear how it goes */
 let demoOff = [];
-function startDemo(){
+function startDemo(){ if (MIC.on) { MIC.paused = true; }
   audio(); reset(); S.demo = true; hud(); S.pos = S.song.ev[0].t - 1.5; S.demoNext = 0;
   $("listenBtn").textContent = "■ Stop"; hint.hidden = true;
 }
@@ -679,7 +710,7 @@ let W=0, H=0, DPR=1, KH=0, HIT=0;
 function resize(){
   const r = cv.getBoundingClientRect(); DPR = Math.min(window.devicePixelRatio||1, 2.5);
   W = r.width; H = r.height; cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  KH = Math.max(110, Math.min(230, H*.32)); HIT = H - KH;
+  KH = Math.max(110, Math.min(230, H*.32)); HIT = H - KH; document.documentElement.style.setProperty("--kh", KH + "px");
 }
 new ResizeObserver(resize).observe(cv);
 
@@ -1021,6 +1052,81 @@ function stopRec(){
   flash(`Saved: ${song.title}. Tap Listen to hear it, or play along.`, 5000);
 }
 
+/* ---------- Microphone: hear an acoustic or digital piano and detect single notes ----------
+   YIN pitch detection on ~43 ms windows. A note counts once the same pitch holds for 2 frames;
+   a jump in loudness on the same pitch counts as a new key press. Chords: only one note is heard. */
+const MIC = { on:false, stream:null, src:null, an:null, buf:null, floor:0, cal:[], cur:-1, cand:-1, candN:0, lvl:0, peak:0, raf:0 };
+function yin(buf, sr){
+  const W = buf.length >> 1, minF = 60, maxF = 2100, tMin = Math.floor(sr / maxF), tMax = Math.min(W - 1, Math.floor(sr / minF));
+  const d = new Float32Array(tMax + 1);
+  for (let t = 1; t <= tMax; t++) { let sum = 0; for (let i = 0; i < W; i++) { const x = buf[i] - buf[i + t]; sum += x * x; } d[t] = sum; }
+  let run = 0, tau = -1;
+  for (let t = 1; t <= tMax; t++) { run += d[t]; d[t] = run ? d[t] * t / run : 1; }
+  for (let t = tMin; t <= tMax; t++) if (d[t] < 0.12) { while (t + 1 <= tMax && d[t+1] < d[t]) t++; tau = t; break; }
+  if (tau < 0) return { f:0, p:0 };
+  const a = d[tau-1] ?? d[tau], b = d[tau], c = d[tau+1] ?? d[tau], den = a + c - 2 * b;
+  const t2 = den ? tau + (a - c) / (2 * den) : tau;
+  return { f: sr / t2, p: 1 - b };
+}
+const freqToMidi = f => Math.round(69 + 12 * Math.log2(f / 440));
+function micFrame(){
+  if (!MIC.on) return;
+  MIC.raf = requestAnimationFrame(micFrame);
+  const an = MIC.an, b = MIC.buf;
+  if (an.getFloatTimeDomainData) an.getFloatTimeDomainData(b);
+  else { const u = new Uint8Array(b.length); an.getByteTimeDomainData(u); for (let i = 0; i < b.length; i++) b[i] = (u[i] - 128) / 128; }
+  let e = 0; for (let i = 0; i < b.length; i++) e += b[i] * b[i]; const rms = Math.sqrt(e / b.length);
+  if (S.demo) { if (MIC.cur >= 0) { noteOff(MIC.cur, "mic"); MIC.cur = -1; } micUi(); return; }
+  if (MIC.cal.length < 25) { MIC.cal.push(rms); if (MIC.cal.length === 25) MIC.floor = MIC.cal.slice().sort((x,y)=>x-y)[12]; micUi(); return; }
+  const gate = Math.max(0.006, MIC.floor * 3.5);
+  const attack = rms > gate && rms > MIC.lvl * 1.8 + gate * .5;   // a fresh key press
+  MIC.lvl = MIC.lvl * 0.85 + rms * 0.15; MIC.peak = Math.max(rms, MIC.peak * 0.96);
+  if (rms < gate) { MIC.candN = 0; if (MIC.cur >= 0 && rms < gate * .7) { noteOff(MIC.cur, "mic"); MIC.cur = -1; } micUi(); return; }
+  const { f, p } = yin(b, ac.sampleRate);
+  if (!f || p < 0.75) { micUi(); return; }
+  const m = freqToMidi(f); if (m < 36 || m > 96) return;
+  if (m === MIC.cand) MIC.candN++; else { MIC.cand = m; MIC.candN = 1; }
+  if (MIC.candN === 2 || (attack && MIC.candN >= 1 && m === MIC.cur)) {
+    if (MIC.cur >= 0 && (MIC.cur !== m || attack)) noteOff(MIC.cur, "mic");
+    if (MIC.cur !== m || attack) { MIC.cur = m; noteOn(m, "mic"); }
+  }
+  micUi();
+}
+function micUi(){
+  const pill = $("micPill"); if (!pill) return;
+  pill.hidden = !MIC.on;
+  $("micNote").textContent = MIC.cal.length < 25 ? "quiet please…" : MIC.cur >= 0 ? NAMES[MIC.cur % 12] + (Math.floor(MIC.cur / 12) - 1) : "–";
+  $("micLvl").style.width = Math.min(100, Math.round(MIC.peak / Math.max(.02, MIC.floor * 40) * 100)) + "%";
+}
+async function startMic(){
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return flash("This browser can't use the microphone here. Open Riff Room at its own address (https), not inside another app's preview.", 8000);
+  const a = audio(); if (!a) return flash("This browser has no audio support.");
+  try {
+    MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+  } catch (e) {
+    return flash(e && e.name === "NotAllowedError"
+      ? (iOS ? "Microphone blocked. Allow it: Settings → Safari → Microphone (or the aA menu → Website Settings), then try again." : "Microphone blocked. Allow it in the browser's site settings, then try again.")
+      : "Couldn't open the microphone. In the Claude app preview it's always blocked: use the Riff Room site instead.", 9000);
+  }
+  if (a.state === "suspended") await a.resume();
+  MIC.src = a.createMediaStreamSource(MIC.stream); MIC.an = a.createAnalyser(); MIC.an.fftSize = 2048;
+  MIC.src.connect(MIC.an); MIC.buf = new Float32Array(MIC.an.fftSize);
+  MIC.on = true; MIC.cal = []; MIC.cur = -1; MIC.cand = -1; MIC.lvl = 0; MIC.peak = 0;
+  MIC.soundWas = S.sound; S.sound = false; $("soundBtn").setAttribute("aria-pressed", false);   // the app mustn't hear itself
+  $("micBtn").classList.add("on"); $("micBtn").textContent = "Mic on";
+  flash("Listening. Stay quiet for a second while it measures the room, then play single notes.", 5000);
+  micFrame();
+}
+function stopMic(){
+  MIC.on = false; cancelAnimationFrame(MIC.raf);
+  if (MIC.cur >= 0) noteOff(MIC.cur, "mic"); MIC.cur = -1;
+  try { MIC.src && MIC.src.disconnect(); } catch(e) {}
+  if (MIC.stream) MIC.stream.getTracks().forEach(t => t.stop());
+  S.sound = MIC.soundWas !== false; $("soundBtn").setAttribute("aria-pressed", S.sound);
+  $("micBtn").classList.remove("on"); $("micBtn").textContent = "Use mic"; micUi();
+}
+
 /* ---------- Sync across devices (Cloudflare Worker, see sync/README.md) ---------- */
 // Sync runs when the app is served by its Cloudflare Worker (same address, path /data). Elsewhere it stays off.
 const SYNC_HOSTS = [/\.workers\.dev$/, /^(www\.)?pianoriffs\.app$/];
@@ -1191,6 +1297,7 @@ $("namesBtn").setAttribute("aria-pressed", S.names);
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
 $("pianoBtn").onclick = () => connectPiano(false);
+$("micBtn").onclick = () => MIC.on ? stopMic() : startMic();
 $("pianoRetry").onclick = () => connectPiano(false);
 $("pianoHelpClose").onclick = () => { $("pianoHelp").hidden = true; };
 $("scoreBtn").onclick = () => setSheet(!SH.open);
