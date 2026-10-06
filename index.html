@@ -233,8 +233,8 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
           <dd>Bluetooth MIDI usually has to be connected by an app first, such as a "BLE MIDI connect" app or Kawai's PianoRemote. Then open this site in Chrome. Don't pair it in the normal Bluetooth settings.</dd>
           <dt>Windows</dt>
           <dd>Chrome on Windows generally can't use Bluetooth MIDI. Use the USB cable.</dd>
-          <dt>iPhone and iPad</dt>
-          <dd>Safari and Chrome on iOS don't support web MIDI at all. Use a laptop or Android, or a Web MIDI browser app from the App Store.</dd>
+          <dt>iPad and iPhone</dt>
+          <dd>No iPad browser can do MIDI, so use a free MIDI browser app from the App Store. On an older iPad: <b>Web MIDI Browser</b> (works from iOS 9). On iPadOS 17.6 or newer: <b>MIDIWeb Browser</b>. Open the Riff Room address inside the app, connect the piano with the app's Bluetooth MIDI button, then tap Connect piano here. A USB cable through Apple's camera adapter also works.</dd>
         </dl>
         <p class="small">Also check that Bluetooth MIDI is switched on in the piano's settings. The app stays silent for piano notes, since the piano makes its own sound.</p>
         <div class="row"><button class="big primary" id="pianoRetry">Try again</button></div>
@@ -632,7 +632,10 @@ function stopDemo(silent){
 S.pianoMutes = true; // the piano makes its own sound, so the app stays quiet for piano notes
 let midiAccess = null;
 async function connectPiano(quiet){
-  if (!navigator.requestMIDIAccess) { if (!quiet) showPianoHelp("This browser can't talk to MIDI devices."); return; }
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (!navigator.requestMIDIAccess) { if (!quiet) showPianoHelp(iOS
+      ? "Apple doesn't allow MIDI in any iPad or iPhone browser, Safari and Chrome included. Open Riff Room in a MIDI browser app instead (see iPad below)."
+      : "This browser can't talk to MIDI devices."); return; }
   try {
     midiAccess = await navigator.requestMIDIAccess({ sysex:false });
     midiAccess.onstatechange = () => wireInputs(true); wireInputs(quiet);
