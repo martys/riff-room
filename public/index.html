@@ -1108,14 +1108,24 @@ function micUi(){
 }
 async function startMic(){
   const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return flash("This browser can't use the microphone here. Open Riff Room at its own address (https), not inside another app's preview.", 8000);
+  const midiApp = iOS && !!navigator.requestMIDIAccess;        // only MIDI browser apps add MIDI on iOS
+  const inClaude = window.top !== window.self;
+  const why = midiApp ? "This MIDI browser app can't use the microphone. For mic mode, open Riff Room in Safari."
+            : inClaude ? "The microphone is blocked inside the Claude preview. Open the Riff Room site in Safari or Chrome."
+            : "";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return flash(why || (location.protocol !== "https:" ? "The microphone only works on an https address." : "This browser has no microphone access. On iPad, use Safari."), 9000);
   const a = audio(); if (!a) return flash("This browser has no audio support.");
   try {
     MIC.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
   } catch (e) {
-    return flash(e && e.name === "NotAllowedError"
-      ? (iOS ? "Microphone blocked. Allow it: Settings → Safari → Microphone (or the aA menu → Website Settings), then try again." : "Microphone blocked. Allow it in the browser's site settings, then try again.")
-      : "Couldn't open the microphone. In the Claude app preview it's always blocked: use the Riff Room site instead.", 9000);
+    const name = (e && e.name) || "Error";
+    if (why) return flash(why + ` (${name})`, 9000);
+    return flash(name === "NotAllowedError"
+      ? (iOS ? "Microphone access is off for this site. In Safari tap aA → Website Settings → Microphone → Allow (or Settings → Safari → Microphone), then try again."
+             : "Microphone access is off for this site. Allow it in the browser's site settings, then try again.")
+      : name === "NotFoundError" ? "No microphone found on this device."
+      : `Couldn't open the microphone (${name}: ${e && e.message || "no details"}).`, 10000);
   }
   if (a.state === "suspended") await a.resume();
   MIC.src = a.createMediaStreamSource(MIC.stream); MIC.an = a.createAnalyser(); MIC.an.fftSize = 2048;
