@@ -43,8 +43,17 @@ body {
 .song-meta { font-size: 12px; color: var(--muted); }
 .song-btn > span > span { display: block; }
 .caret { color: var(--brass); font-size: 14px; }
-.spacer { flex: 1; }
-.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.song-btn { flex: 1 1 220px; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.bar { position: relative; z-index: 6; }
+button.c.icon { width: 38px; padding-inline: 0; font-size: 17px; line-height: 1; }
+button.c.chip { border-color: var(--brass); color: var(--brass); }
+.more { position: absolute; right: 16px; top: calc(100% + 6px); width: min(340px, calc(100% - 32px)); background: var(--lane); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
+.more-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); }
+.more-row .tempo input { width: 160px; }
+.more-group { display: grid; gap: 6px; }
+.more-group h4 { margin: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.more-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 button.c, .seg button {
   font: 700 13px var(--font-body); color: var(--fg);
   background: var(--chip); border: 1px solid var(--line); border-radius: 999px;
@@ -204,7 +213,6 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
   .who-name { display: none; }
   .who-btn { padding: 3px; }
   .song-title { font-size: 19px; }
-  .spacer { display: none; }
   .bar { gap: 6px 8px; padding-block: 8px; }
   button.c, .seg button { padding: 7px 10px; font-size: 12px; }
 }
@@ -226,7 +234,6 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       </span>
       <span class="caret">▾</span>
     </button>
-    <span class="spacer"></span>
     <div class="controls">
       <div class="seg" role="group" aria-label="Mode">
         <button id="mWait" aria-pressed="true">Wait for me</button>
@@ -238,15 +245,19 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <button id="h_L" aria-pressed="false">Left</button>
       </div>
       <button class="c" id="listenBtn">▶ Listen</button>
-      <button class="c" id="restartBtn">↺ Restart</button>
-      <label class="tempo" for="tempo">Speed <input type="range" id="tempo" min="40" max="160" step="4" value="100"><output id="tempoOut">100</output></label>
-      <button class="c" id="namesBtn" aria-pressed="true">Aa Names</button>
-      <button class="c" id="fingersBtn" aria-pressed="true">Fingers</button>
+      <button class="c icon" id="restartBtn" aria-label="Restart" title="Restart">↺</button>
       <button class="c" id="scoreBtn" aria-pressed="false">Sheet music</button>
-      <button class="c rec" id="recBtn">● Record</button>
-      <button class="c" id="soundBtn" aria-pressed="true">♪ App sound</button>
-      <button class="c piano" id="pianoBtn">Connect piano</button>
-      <button class="c mic" id="micBtn">Use mic</button>
+      <button class="c chip" id="inputChip" hidden></button>
+      <button class="c" id="moreBtn" aria-haspopup="dialog" aria-expanded="false">More</button>
+    </div>
+    <div class="more" id="morePanel" hidden role="dialog" aria-label="More settings">
+      <div class="more-row"><label for="tempo">Speed</label><span class="tempo"><input type="range" id="tempo" min="40" max="160" step="4" value="100"><output id="tempoOut">100</output></span></div>
+      <div class="more-group"><h4>Show</h4>
+        <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button></div></div>
+      <div class="more-group"><h4>Hear the piano</h4>
+        <div class="more-btns"><button class="c piano" id="pianoBtn">Connect piano</button><button class="c mic" id="micBtn">Use mic</button></div></div>
+      <div class="more-group"><h4>Extras</h4>
+        <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
     </div>
   </header>
 
@@ -477,8 +488,9 @@ function handOf(s){
   if (!hasL) return () => "R"; if (!hasR) return () => "L";
   return m => m < 60 ? "L" : "R";
 }
+const FINGERED = new WeakSet();               // note lists that already have fingers
 function computeFingering(s){
-  if (s.fingered || !s.ev || !s.ev.length) return;
+  if (!s.ev || !s.ev.length || FINGERED.has(s.ev) || s.ev.every(e => e.f && e.f.length === e.p.length && e.f.every(Boolean) && e.h)) { FINGERED.add(s.ev || []); return; }
   const H = handOf(s);
   s.ev.forEach(e => { if (!e.f || e.f.length !== e.p.length) e.f = e.p.map(() => 0); if (!e.h || e.h.length !== e.p.length) e.h = e.p.map(m => H(m)); });
   ["R","L"].forEach(hand => {
@@ -521,7 +533,7 @@ function computeFingering(s){
     let f = cost.indexOf(Math.min(...cost)) + 1;
     for (let j = line.length - 1; j >= 0; j--) { const it = line[j]; if (!s.ev[it.i].f[it.k]) s.ev[it.i].f[it.k] = f; if (j > 0) f = back[j-1][f-1]; }
   });
-  s.fingered = true;
+  FINGERED.add(s.ev);
 }
 
 const LEVELS = [
@@ -1146,7 +1158,7 @@ function markNew(id){
 function swapHands(s){
   if (!s.alt) return;
   [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand]; s.ts = Date.now();
-  saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
+  computeFingering(s); saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
 }
 function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts}))); }
 store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
@@ -1581,6 +1593,19 @@ $("fingersBtn").onclick = () => { S.fingers = !S.fingers; PD.fingers = S.fingers
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
 $("pianoBtn").onclick = () => connectPiano(false);
+const morePanel = $("morePanel");
+function setMore(open){ morePanel.hidden = !open; $("moreBtn").setAttribute("aria-expanded", open); }
+$("moreBtn").onclick = e => { e.stopPropagation(); setMore(morePanel.hidden); };
+$("inputChip").onclick = e => { e.stopPropagation(); setMore(true); };
+document.addEventListener("pointerdown", e => { if (!morePanel.hidden && !morePanel.contains(e.target) && e.target !== $("moreBtn") && e.target !== $("inputChip")) setMore(false); });
+window.addEventListener("keydown", e => { if (e.key === "Escape") setMore(false); });
+// the chip shows what the app is listening to, without opening the panel
+function updateChip(){
+  const chip = $("inputChip"), piano = $("pianoBtn").classList.contains("on"), mic = MIC.on;
+  chip.hidden = !piano && !mic; chip.textContent = mic ? "Mic on" : "Piano connected";
+}
+new MutationObserver(updateChip).observe($("pianoBtn"), { attributes:true, attributeFilter:["class"] });
+new MutationObserver(updateChip).observe($("micBtn"), { attributes:true, attributeFilter:["class"] });
 $("micBtn").onclick = () => MIC.on ? stopMic() : startMic();
 $("micSens").value = MIC.sens; $("micSensOut").value = MIC.sens;
 $("micSens").oninput = e => { MIC.sens = +e.target.value; $("micSensOut").value = MIC.sens; store.set("mic.sens", MIC.sens); };
