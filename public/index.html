@@ -227,6 +227,10 @@ button.mic.on { background: var(--brass); color: #1a1408; }
 .micpill output { min-width: 1.4em; font-variant-numeric: tabular-nums; }
 .micpill .lvl i { display: block; height: 100%; width: 0; background: var(--brass); transition: width .08s linear; }
 .micpill b { min-width: 2.6em; font-variant-numeric: tabular-nums; }
+.micpill .mic-min { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--chip); color: var(--muted); font: 700 12px var(--font-body); cursor: pointer; }
+.micpill.mini { cursor: pointer; padding: 5px 10px; gap: 6px; }
+.micpill.mini .lvl, .micpill.mini label, .micpill.mini input, .micpill.mini output, .micpill.mini .mic-min { display: none; }
+.micpill.mini > span:first-child::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); margin-right: 6px; vertical-align: 1px; }
 .help { gap: 10px; }
 .help p { margin: 0; font-size: 14px; line-height: 1.45; }
 .help .why { color: var(--brass); font-weight: 700; }
@@ -315,7 +319,8 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       </div>
     </div>
     <div class="micpill" id="micPill" hidden><span>Mic</span><span class="lvl"><i id="micLvl"></i><u id="micGate"></u></span><b id="micNote">–</b>
-      <label for="micSens">Sensitivity</label><input type="range" id="micSens" min="1" max="10" step="1"><output id="micSensOut"></output></div>
+      <label for="micSens">Sensitivity</label><input type="range" id="micSens" min="1" max="10" step="1"><output id="micSensOut"></output>
+      <button class="mic-min" id="micMin" aria-label="Make the mic panel small" title="Make small">✕</button></div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hands" id="handsGuide" hidden aria-live="polite"></div>
@@ -1743,6 +1748,11 @@ document.addEventListener("pointerdown", e => { if (!morePanel.hidden && !morePa
 window.addEventListener("keydown", e => { if (e.key === "Escape") setMore(false); });
 
 $("micBtn").onclick = () => MIC.on ? stopMic() : startMic();
+/* The mic panel can shrink to a small "Mic · C4" tag when the sensitivity is set; tap the tag to open it again. Remembered per device. */
+const setMicMini = on => { store.set("mic.mini", on); $("micPill").classList.toggle("mini", on); $("micPill").title = on ? "Tap for mic sensitivity" : ""; };
+setMicMini(!!store.get("mic.mini", false));
+$("micMin").onclick = e => { e.stopPropagation(); setMicMini(true); };
+$("micPill").onclick = () => { if ($("micPill").classList.contains("mini")) setMicMini(false); };
 $("micSens").value = MIC.sens; $("micSensOut").value = MIC.sens;
 $("micSens").oninput = e => { MIC.sens = +e.target.value; $("micSensOut").value = MIC.sens; store.set("mic.sens", MIC.sens); };
 $("pianoRetry").onclick = () => connectPiano(false);
