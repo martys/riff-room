@@ -615,6 +615,8 @@ const S = {
   lo: 60, hi: 76,
   held: new Map(),                      // midi -> count of sources holding it
   sparks: [],
+  fx: [],                               // Play along hit effects: rings, light beams, "Perfect!" labels
+  combo: 0, missNext: 0,
 };
 
 /* ---------- Audio: a small piano-ish synth ---------- */
@@ -701,7 +703,7 @@ function judgeMic(m){
   } else {
     let best = -1, bd = 9;
     ev.forEach((e,i) => { const nd = needIdx(e).map(j => e.p[j]); const d = Math.abs(e.t - S.pos); if (nd.length && d <= .6 && micHit(m, nd) != null && !S.hits.has(i+":"+nd[0]) && d < bd) { best = i; bd = d; } });
-    if (best >= 0) { const e = ev[best], nd = needIdx(e).map(j => e.p[j]); nd.forEach(n => { S.hits.add(best+":"+n); spark(n); }); R.pts += (bd <= .15 ? 100 : bd <= .35 ? 70 : 40) * nd.length; }
+    if (best >= 0) { const e = ev[best], nd = needIdx(e).map(j => e.p[j]); nd.forEach((n,k) => { S.hits.add(best+":"+n); hitFx(n, bd + .1, e.t - S.pos, k > 0); }); R.pts += (bd <= .15 ? 100 : bd <= .35 ? 70 : 40) * nd.length; }
     else if (S.pos > ev[0].t - 1 && !ev.some(e => e.t < S.pos && e.t > S.pos - 1.5 && e.p.some(n => pc(n) === pc(m)))) {
       R.wrong++; R.pts -= 30; let ni = 0, nd = 1e9; ev.forEach((e,i)=>{ const d=Math.abs(e.t-S.pos); if(d<nd){nd=d;ni=i;} }); mark(ni);
     }
@@ -726,8 +728,8 @@ function judge(m, src){
       const e = ev[i], d = Math.abs(e.t - S.pos); if (d > .6) continue;
       if (e.p.some((x,j) => x === m && mine(e,j)) && !S.hits.has(i+":"+m) && d < bd) { best = i; bd = d; }
     }
-    if (best >= 0) { S.hits.add(best+":"+m); spark(m); R.pts += bd <= .15 ? 100 : bd <= .35 ? 70 : 40; }
-    else if (S.pos > ev[0].t - 1) { R.wrong++; R.pts -= 30;
+    if (best >= 0) { S.hits.add(best+":"+m); R.pts += bd <= .15 ? 100 : bd <= .35 ? 70 : 40; hitFx(m, bd, ev[best].t - S.pos); }
+    else if (S.pos > ev[0].t - 1) { R.wrong++; R.pts -= 30; breakCombo();
       let ni = 0, nd = 1e9; ev.forEach((e,i)=>{ const d=Math.abs(e.t-S.pos); if(d<nd){nd=d;ni=i;} }); mark(ni); }
   }
   hud();
@@ -754,6 +756,7 @@ function reset(){
   S.seeked = false;
   autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
   S.idx = 0; S.go = false; S.got.clear(); S.hits.clear(); S.finished = false; runReset();
+  S.combo = 0; S.missNext = 0; S.fx = [];
   const first = S.song.ev[0].t;
   S.pos = first - (S.mode==="wait" ? 2.5 : 4);
   $("done").hidden = true;
@@ -956,7 +959,7 @@ function seekTo(pos){
   S.seeked = true; S.finished = false; $("done").hidden = true; S.got.clear(); S.go = false;
   autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
   let i = ev.findIndex(e => e.t >= S.pos - .05); if (i < 0) i = ev.length - 1;
-  S.idx = i; S.autoNext = i;
+  S.idx = i; S.autoNext = i; S.missNext = i; S.combo = 0;
   const bar = Math.floor((ev[i].t - (S.song.pickup || 0)) / (S.song.bar || 4)) + 1;
   $("seekBar").textContent = Math.max(1, bar);
 }
@@ -989,6 +992,57 @@ cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 function spark(m){
   const g = geom(), k = g.keyX(m), c = PCOL[m%12];
   for (let i=0;i<10;i++) S.sparks.push({ x:k.x+k.w/2, y:HIT, vx:(Math.random()-.5)*160, vy:-80-Math.random()*200, life:.7, c, r:2+Math.random()*2.5 });
+}
+/* Play along: the closer to the beat, the bigger the reward.
+   Perfect = a shockwave ring, a beam of light up the note's lane, a burst of sparks and a "Perfect!" label.
+   A run of hits in a row builds a combo; every 10 the whole lane flashes. */
+function hitFx(m, bd, early, quiet){
+  const g = geom(), k = g.keyX(m), c = PCOL[m%12], x = k.x + k.w/2;
+  const grade = bd <= .12 ? 2 : bd <= .3 ? 1 : 0;
+  S.combo++;
+  const n = [6, 12, 22][grade];
+  for (let i=0;i<n;i++) S.sparks.push({ x, y:HIT, vx:(Math.random()-.5)*(grade===2?320:180), vy:-100-Math.random()*(grade===2?380:220), life:grade===2?.9:.7, c: i%4===0 ? "#fff" : c, r:2+Math.random()*(grade===2?3.5:2.5) });
+  if (grade >= 1) S.fx.push({ kind:"ring", x, c, life:.5, max:.5, big:grade===2, w:k.w });
+  if (grade === 2) S.fx.push({ kind:"beam", x, w:k.w, c, life:.45, max:.45 });
+  if (!quiet) {
+    const txt = grade === 2 ? "Perfect!" : grade === 1 ? "Good" : early > 0 ? "Early" : "Late";
+    S.fx = S.fx.filter(f => !(f.kind === "text" && Math.abs(f.x - x) < 60 && f.life > .3));   // fast runs: don't stack labels
+    S.fx.push({ kind:"text", x, txt, c: grade === 2 ? "#ffe08a" : grade === 1 ? "#fff" : "#9097ab", life:.8, max:.8, size: grade === 2 ? 22 : 16 });
+    if (S.combo >= 5 && S.combo % 5 === 0) S.fx.push({ kind:"combo", n:S.combo, life:1.1, max:1.1 });
+    if (S.combo % 10 === 0) S.fx.push({ kind:"flash", life:.35, max:.35 });
+  }
+}
+function breakCombo(){
+  if (S.combo >= 5) S.fx.push({ kind:"text", x:W/2, txt:"Combo lost", c:"#9097ab", life:.9, max:.9, size:15, y:HIT*.45 });
+  S.combo = 0;
+}
+function drawFx(){
+  for (const f of S.fx) {
+    const a = f.life / f.max, t = 1 - a;
+    cx.save();
+    if (f.kind === "beam") {
+      cx.globalCompositeOperation = "lighter";
+      const gr = cx.createLinearGradient(0, HIT, 0, HIT - HIT*.75);
+      gr.addColorStop(0, f.c); gr.addColorStop(1, "rgba(0,0,0,0)");
+      cx.globalAlpha = a * .55; cx.fillStyle = gr;
+      const w = f.w * (1 + t*.6); cx.fillRect(f.x - w/2, HIT - HIT*.75, w, HIT*.75);
+    } else if (f.kind === "ring") {
+      cx.globalAlpha = a; cx.strokeStyle = f.c; cx.lineWidth = (f.big ? 5 : 3) * a + 1;
+      cx.beginPath(); cx.ellipse(f.x, HIT, f.w*.4 + t*(f.big ? 70 : 40), 6 + t*(f.big ? 26 : 14), 0, 0, 7); cx.stroke();
+    } else if (f.kind === "text") {
+      const y = (f.y || HIT - 46) - t*28;
+      cx.globalAlpha = Math.min(1, a*2); cx.fillStyle = f.c; cx.textAlign = "center";
+      cx.font = `800 ${Math.round(f.size * (1 + .25*Math.max(0, .2 - t)*5))}px ${FONT}`;
+      cx.shadowColor = "rgba(0,0,0,.6)"; cx.shadowBlur = 6; cx.fillText(f.txt, f.x, y);
+    } else if (f.kind === "combo") {
+      cx.globalAlpha = Math.min(1, a*2.5); cx.textAlign = "center"; cx.fillStyle = "#e2b25c";
+      cx.font = `800 ${Math.round(30 + 8*Math.max(0, .15 - t)/.15)}px ${FONT}`;
+      cx.shadowColor = "rgba(226,178,92,.6)"; cx.shadowBlur = 16; cx.fillText(`${f.n} in a row!`, W/2, HIT*.3 - t*16);
+    } else if (f.kind === "flash") {
+      cx.globalCompositeOperation = "lighter"; cx.globalAlpha = a * .18; cx.fillStyle = "#e2b25c"; cx.fillRect(0, 0, W, HIT);
+    }
+    cx.restore();
+  }
 }
 function confetti(){
   for (let i=0;i<120;i++) S.sparks.push({ x:Math.random()*W, y:-10-Math.random()*H*.3, vx:(Math.random()-.5)*60, vy:60+Math.random()*120, life:2.6, c:PCOL[(Math.random()*12)|0], r:3+Math.random()*3, sq:true });
@@ -1033,6 +1087,11 @@ function step(dt){
   }
   for (let i = autoOff.length - 1; i >= 0; i--) if (performance.now() >= autoOff[i][1]) { noteOff(autoOff[i][0], "auto"); autoOff.splice(i, 1); }
   S.sparks = S.sparks.filter(p => (p.life -= dt) > 0);
+  S.fx = S.fx.filter(f => (f.life -= dt) > 0);
+  if (S.mode === "flow" && !S.demo && !S.finished) while (S.missNext < ev.length && ev[S.missNext].t < S.pos - .6) {
+    const i = S.missNext++, e = ev[i];
+    if (needIdx(e).some(j => !S.hits.has(i+":"+e.p[j]))) breakCombo();
+  }
   S.sparks.forEach(p => { p.x += p.vx*dt; p.y += p.vy*dt; p.vy += (p.sq?40:420)*dt; });
 }
 
@@ -1109,6 +1168,7 @@ function draw(now){
   }
   fingerHint(want, wantF);
 
+  drawFx();
   // sparks
   S.sparks.forEach(p => { cx.globalAlpha = Math.min(1, p.life*2); cx.fillStyle = p.c;
     if (p.sq) cx.fillRect(p.x, p.y, p.r*1.6, p.r); else { cx.beginPath(); cx.arc(p.x,p.y,p.r,0,7); cx.fill(); } });
