@@ -47,7 +47,17 @@ body {
 .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .bar { position: relative; z-index: 6; }
 button.c.icon { width: 38px; padding-inline: 0; font-size: 17px; line-height: 1; }
-button.c.chip { border-color: var(--brass); color: var(--brass); }
+.lane-btn { position: absolute; right: 16px; top: 12px; z-index: 3; background: rgba(18,21,31,.9); }
+.stepper { display: inline-flex; align-items: center; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.stepper button { width: 34px; height: 30px; border: 0; background: none; color: var(--fg); font: 700 18px var(--font-body); border-radius: 999px; cursor: pointer; }
+.stepper button:hover { background: var(--line); }
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper output { min-width: 3.4em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.speed-row { display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.done-card { position: relative; }
+.done-x { position: absolute; right: 10px; top: 10px; }
+.muted { color: var(--muted); font-size: 11px; }
+.seekhint { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--kh, 30%) + 12px); background: var(--chip); border: 1px solid var(--brass); border-radius: 999px; padding: 7px 14px; font-size: 13px; z-index: 3; pointer-events: none; white-space: nowrap; }
 .more { position: absolute; right: 16px; top: calc(100% + 6px); width: min(340px, calc(100% - 32px)); background: var(--lane); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
 .more-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); }
 .more-row .tempo input { width: 160px; }
@@ -72,7 +82,7 @@ button.piano.on { background: var(--brass); color: #1a1408; }
 .tempo output { font-variant-numeric: tabular-nums; min-width: 2.2em; color: var(--fg); }
 
 .stage { position: relative; flex: 1; min-height: 0; }
-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: ns-resize; }
 .hint {
   position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
   background: rgba(18,21,31,.85); border: 1px solid var(--line); border-radius: 12px;
@@ -246,16 +256,14 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       </div>
       <button class="c" id="listenBtn">▶ Listen</button>
       <button class="c icon" id="restartBtn" aria-label="Restart" title="Restart">↺</button>
-      <button class="c" id="scoreBtn" aria-pressed="false">Sheet music</button>
-      <button class="c chip" id="inputChip" hidden></button>
+      <button class="c piano" id="pianoBtn">Connect piano</button>
+      <button class="c mic" id="micBtn">Use mic</button>
       <button class="c" id="moreBtn" aria-haspopup="dialog" aria-expanded="false">More</button>
     </div>
     <div class="more" id="morePanel" hidden role="dialog" aria-label="More settings">
-      <div class="more-row"><label for="tempo">Speed</label><span class="tempo"><input type="range" id="tempo" min="40" max="160" step="4" value="100"><output id="tempoOut">100</output></span></div>
+      <div class="more-row"><span>Speed <small class="muted">(for Play along and Listen)</small></span><span class="stepper speedStep"><button data-d="-10" aria-label="Slower">−</button><output class="speedOut">100%</output><button data-d="10" aria-label="Faster">+</button></span></div>
       <div class="more-group"><h4>Show</h4>
         <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button></div></div>
-      <div class="more-group"><h4>Hear the piano</h4>
-        <div class="more-btns"><button class="c piano" id="pianoBtn">Connect piano</button><button class="c mic" id="micBtn">Use mic</button></div></div>
       <div class="more-group"><h4>Extras</h4>
         <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
     </div>
@@ -263,6 +271,8 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
 
   <main class="stage" id="stage">
     <canvas id="cv" aria-label="Falling notes above a piano keyboard. Tap keys to play."></canvas>
+    <button class="c lane-btn" id="scoreBtn" aria-pressed="false" title="Show the written notes on the staff">Sheet music</button>
+    <div class="seekhint" id="seekHint" hidden>Bar <b id="seekBar">1</b> · <span id="seekWhat">play the glowing key to carry on</span></div>
     <section class="paper" id="paper" hidden aria-label="Sheet music">
       <div class="paper-head"><b id="paperTitle"></b><span id="paperNote"></span><button class="c" id="paperClose">Hide</button></div>
       <div id="abc"></div>
@@ -297,11 +307,13 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="toast" id="toast" hidden></div>
     <div class="done" id="done" hidden>
       <div class="done-card">
+        <button class="c icon done-x" id="doneClose" aria-label="Close">✕</button>
         <h2 id="doneTitle">You played it!</h2>
         <div class="done-stars" id="doneStars" hidden></div>
         <div class="done-score" id="doneScore" hidden></div>
         <p class="done-text" id="doneText"></p>
         <div class="tricky" id="tricky" hidden><span id="trickyText"></span><button class="c" id="trickyBtn">Practise this bit</button></div>
+        <div class="speed-row"><span>Speed</span><span class="stepper speedStep"><button data-d="-10" aria-label="Slower">−</button><output class="speedOut">100%</output><button data-d="10" aria-label="Faster">+</button></span></div>
         <div class="row">
           <button class="big primary" id="againBtn">Play again</button>
           <button class="big" id="fullBtn" hidden>Play the whole piece</button>
@@ -725,6 +737,7 @@ function computeRange(){
   S.lo = lo; S.hi = hi;
 }
 function reset(){
+  S.seeked = false;
   autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
   S.idx = 0; S.go = false; S.got.clear(); S.hits.clear(); S.finished = false; runReset();
   const first = S.song.ev[0].t;
@@ -734,8 +747,8 @@ function reset(){
 }
 function setSong(s){
   computeFingering(s);
-  S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); } S.bpm = s.bpm;
-  $("tempo").value = s.bpm; $("tempoOut").value = s.bpm;
+  S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); }
+  S.speed = (PD.speeds && PD.speeds[s.id]) || 100; applySpeed();
   $("songTitle").textContent = s.title;
   $("songMeta").textContent = s.lvl ? `Level ${s.lvl} · ${s.hand}` : s.lvl === 0 && !s.user ? `Finger gym · ${s.hand}` : s.hand;
   const two = songHasBothHands(s); $("handsSeg").hidden = !two; if (!two && S.hands !== "both") { S.hands = "both"; ["both","R","L"].forEach(x => $("h_"+x).setAttribute("aria-pressed", x === "both")); }
@@ -759,7 +772,7 @@ function finish(){
   const clean = R.wrong === 0 && missed === 0 && (S.mode === "wait" || pct >= .85);
   const stars = clean ? 5 : pct >= .9 ? 4 : pct >= .75 ? 3 : pct >= .55 ? 2 : 1;
   const score = Math.round(pct * 10000);
-  const scored = P.scored && !s.practice && S.hands === "both";
+  const scored = P.scored && !s.practice && S.hands === "both" && !S.seeked;
   let st = null, newBest = false;
   if (scored) {
     st = stat(s.id);
@@ -784,7 +797,7 @@ function finish(){
     parts.push(`${Math.round(pct*100)}% · ${R.wrong} wrong key${R.wrong===1?"":"s"}${S.mode==="flow" ? ` · ${missed} missed` : ""}`);
     parts.push(`Best ${st.best.toLocaleString("en-US")} · played ${st.plays}× · last runs ${st.last.join(", ")}%`);
     if (stars < 5) parts.push(S.mode==="wait" ? "5 stars: play it with no wrong keys." : "5 stars: catch every note with no wrong keys.");
-  } else parts.push(S.hands !== "both" ? `${S.hands === "R" ? "Right" : "Left"} hand practice, done. Switch Hands to Both to earn stars.` : s.practice ? "That tricky bit, done." : `${s.title}, all ${n} notes.`);
+  } else parts.push(S.seeked && P.scored ? "You jumped around in the piece, so this run isn't scored. Play again from the start for stars." : S.hands !== "both" ? `${S.hands === "R" ? "Right" : "Left"} hand practice, done. Switch Hands to Both to earn stars.` : s.practice ? "That tricky bit, done." : `${s.title}, all ${n} notes.`);
   $("doneText").replaceChildren(...parts.map(t => { const el = document.createElement("span"); el.textContent = t; return el; }));
   const tricky = $("tricky");
   tricky.hidden = !(hotAt >= 0 && hotN > 0 && !s.practice);
@@ -914,18 +927,44 @@ function keyAt(x,y){
   const i = Math.floor(x / g.ww); return g.whites[Math.max(0, Math.min(g.whites.length-1, i))];
 }
 
+/* Drag the falling notes up or down (or use a mouse wheel) to move back and forth through the piece.
+   Dragging down brings later notes to the keys, like scrolling a list. A run you moved around in isn't scored. */
+const DRAG = { id:null, y:0, pos:0, moved:false };
+const lanePPB = () => Math.max(46, HIT/4.2);
+function seekTo(pos){
+  const ev = S.song.ev; if (!ev.length) return;
+  stopDemo(true);
+  S.pos = Math.max(ev[0].t - 2.5, Math.min(S.song.end, pos));
+  S.seeked = true; S.finished = false; $("done").hidden = true; S.got.clear(); S.go = false;
+  autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
+  let i = ev.findIndex(e => e.t >= S.pos - .05); if (i < 0) i = ev.length - 1;
+  S.idx = i; S.autoNext = i;
+  const bar = Math.floor((ev[i].t - (S.song.pickup || 0)) / (S.song.bar || 4)) + 1;
+  $("seekBar").textContent = Math.max(1, bar);
+}
+function seekDone(){
+  const ev = S.song.ev, i = S.idx;
+  if (S.mode === "wait") S.pos = ev[i] ? ev[i].t : S.pos;           // line up on the next note to play
+  else S.pos = (ev[i] ? ev[i].t : S.pos) - 2;                          // a short run-up, then it waits for your first note
+  $("seekWhat").textContent = S.mode === "wait" ? "play the glowing key to carry on" : "press any key to start from here";
+  $("seekHint").hidden = false; clearTimeout(seekDone.t); seekDone.t = setTimeout(() => $("seekHint").hidden = true, 3500);
+}
+cv.addEventListener("wheel", e => { if (e.clientY - cv.getBoundingClientRect().top >= HIT) return; e.preventDefault();
+  seekTo(S.pos - e.deltaY / lanePPB()); clearTimeout(seekDone.w); seekDone.w = setTimeout(seekDone, 250); }, { passive:false });
+
 // multi-touch + glide
 const ptr = new Map();
 cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
-  if (m==null) return; cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
+  if (m==null) { if (DRAG.id == null && !S.demo) { DRAG.id = e.pointerId; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
 });
 cv.addEventListener("pointermove", e => {
+  if (e.pointerId === DRAG.id) { const dy = e.clientY - DRAG.y; if (Math.abs(dy) > 6) DRAG.moved = true; if (DRAG.moved) seekTo(DRAG.pos + dy / lanePPB()); return; }
   if (!ptr.has(e.pointerId)) return;
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
   const old = ptr.get(e.pointerId); if (m!=null && m!==old) { noteOff(old,"touch"); ptr.set(e.pointerId,m); noteOn(m,"touch"); }
 });
-const up = e => { const m = ptr.get(e.pointerId); if (m!=null){ ptr.delete(e.pointerId); noteOff(m,"touch"); } };
+const up = e => { if (e.pointerId === DRAG.id) { if (DRAG.moved) seekDone(); DRAG.id = null; return; } const m = ptr.get(e.pointerId); if (m!=null){ ptr.delete(e.pointerId); noteOff(m,"touch"); } };
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 
 /* ---------- Sparks & confetti ---------- */
@@ -960,6 +999,8 @@ function step(dt){
     }
     demoOff = demoOff.filter(([m,at]) => { if (S.pos >= at) { noteOff(m,"demo"); return false; } return true; });
     if (S.pos > S.song.end + 1) stopDemo(false);
+  } else if (DRAG.moved && DRAG.id != null) {
+    // the player is dragging the notes: hold still
   } else if (S.mode === "wait") {
     const target = S.idx < ev.length ? ev[S.idx].t : S.song.end;
     S.pos += (target - S.pos) * (1 - Math.exp(-dt*9));
@@ -1270,7 +1311,7 @@ function sheetTick(){
     if (r.top < pr.top + 40 || r.bottom > pr.bottom - 10) $("paper").scrollBy({ top: r.top - pr.top - 50, behavior: "smooth" }); }
 }
 function setSheet(on){
-  SH.open = on; $("paper").hidden = !on; $("scoreBtn").setAttribute("aria-pressed", on);
+  SH.open = on; $("paper").hidden = !on; $("scoreBtn").setAttribute("aria-pressed", on); $("scoreBtn").hidden = on;
   PD.sheet = on; saveProfile(); if (on) renderSheet();
 }
 let sheetW = 0;
@@ -1561,7 +1602,7 @@ function switchProfile(id){
   S.fingers = PD.fingers !== false; $("fingersBtn").setAttribute("aria-pressed", S.fingers);
   $("who").hidden = true; renderWho(); setMode(PD.mode);
   if (REC.on) stopRec();
-  SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open);
+  SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open); $("scoreBtn").hidden = SH.open;
   const s = SONGS.find(x=>x.id===PD.song);
   setSong(s && (!s.lvl || levelOpen(s.lvl)) ? s : SONGS.find(x=>x.id===P.first));
   S.started = false; hint.hidden = false;
@@ -1571,6 +1612,8 @@ $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; $("sheet").hidden = false; };
 $("againBtn").onclick = () => reset();
+$("doneClose").onclick = () => { $("done").hidden = true; };
+$("done").addEventListener("pointerdown", e => { if (e.target.id === "done") $("done").hidden = true; });
 $("fullBtn").onclick = () => { const w = SONGS.find(x => x.id === S.song.full); if (w) setSong(w); };
 $("nextBtn").onclick = () => { const nx = nextSong(S.song); if (nx) setSong(nx); };
 $("trickyBtn").onclick = () => practiceBit();
@@ -1587,7 +1630,17 @@ $("mWait").onclick = () => setMode("wait");
 ["both","R","L"].forEach(x => $("h_"+x).onclick = () => setHands(x));
 $("mFlow").onclick = () => setMode("flow");
 $("listenBtn").onclick = () => S.demo ? stopDemo(false) : startDemo();
-$("tempo").oninput = e => { S.bpm = +e.target.value; $("tempoOut").value = S.bpm; };
+function applySpeed(){
+  S.bpm = Math.round(S.song.bpm * S.speed / 100);
+  document.querySelectorAll(".speedOut").forEach(o => o.value = S.speed + "%");
+  document.querySelectorAll(".speedStep button").forEach(b => b.disabled = (+b.dataset.d < 0 && S.speed <= 50) || (+b.dataset.d > 0 && S.speed >= 150));
+  const again = $("againBtn"); if (again) again.textContent = S.speed === 100 ? "Play again" : `Play again at ${S.speed}%`;
+}
+document.querySelectorAll(".speedStep button").forEach(b => b.onclick = () => {
+  S.speed = Math.max(50, Math.min(150, S.speed + +b.dataset.d));
+  if (!S.song.practice) { PD.speeds = Object.assign({}, PD.speeds, { [S.song.id]: S.speed }); saveProfile(); }
+  applySpeed();
+});
 $("namesBtn").setAttribute("aria-pressed", S.names);
 $("fingersBtn").onclick = () => { S.fingers = !S.fingers; PD.fingers = S.fingers; saveProfile(); $("fingersBtn").setAttribute("aria-pressed", S.fingers); if (SH.open) renderSheet(); };
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
@@ -1596,16 +1649,9 @@ $("pianoBtn").onclick = () => connectPiano(false);
 const morePanel = $("morePanel");
 function setMore(open){ morePanel.hidden = !open; $("moreBtn").setAttribute("aria-expanded", open); }
 $("moreBtn").onclick = e => { e.stopPropagation(); setMore(morePanel.hidden); };
-$("inputChip").onclick = e => { e.stopPropagation(); setMore(true); };
-document.addEventListener("pointerdown", e => { if (!morePanel.hidden && !morePanel.contains(e.target) && e.target !== $("moreBtn") && e.target !== $("inputChip")) setMore(false); });
+document.addEventListener("pointerdown", e => { if (!morePanel.hidden && !morePanel.contains(e.target) && e.target !== $("moreBtn")) setMore(false); });
 window.addEventListener("keydown", e => { if (e.key === "Escape") setMore(false); });
-// the chip shows what the app is listening to, without opening the panel
-function updateChip(){
-  const chip = $("inputChip"), piano = $("pianoBtn").classList.contains("on"), mic = MIC.on;
-  chip.hidden = !piano && !mic; chip.textContent = mic ? "Mic on" : "Piano connected";
-}
-new MutationObserver(updateChip).observe($("pianoBtn"), { attributes:true, attributeFilter:["class"] });
-new MutationObserver(updateChip).observe($("micBtn"), { attributes:true, attributeFilter:["class"] });
+
 $("micBtn").onclick = () => MIC.on ? stopMic() : startMic();
 $("micSens").value = MIC.sens; $("micSensOut").value = MIC.sens;
 $("micSens").oninput = e => { MIC.sens = +e.target.value; $("micSensOut").value = MIC.sens; store.set("mic.sens", MIC.sens); };
