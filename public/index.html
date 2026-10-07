@@ -142,6 +142,7 @@ li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92
 .stars i.on { color: var(--brass); }
 .hud { position: absolute; left: 16px; top: 12px; display: flex; gap: 10px; background: rgba(18,21,31,.8); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .hud .wrong { color: #e98a80; }
+.fingerpill { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; background: rgba(18,21,31,.88); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; white-space: nowrap; pointer-events: none; z-index: 2; }
 .done-stars { display: flex; gap: 6px; justify-content: center; font-size: 40px; line-height: 1; }
 .done-stars i { font-style: normal; color: #3a4057; }
 .done-stars i.on { color: var(--brass); animation: pop .45s cubic-bezier(.3,1.6,.5,1) both; }
@@ -217,6 +218,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <button class="c" id="restartBtn">↺ Restart</button>
       <label class="tempo" for="tempo">Speed <input type="range" id="tempo" min="40" max="160" step="4" value="100"><output id="tempoOut">100</output></label>
       <button class="c" id="namesBtn" aria-pressed="true">Aa Names</button>
+      <button class="c" id="fingersBtn" aria-pressed="true">Fingers</button>
       <button class="c" id="scoreBtn" aria-pressed="false">Sheet music</button>
       <button class="c rec" id="recBtn">● Record</button>
       <button class="c" id="soundBtn" aria-pressed="true">♪ App sound</button>
@@ -256,6 +258,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <label for="micSens">Sensitivity</label><input type="range" id="micSens" min="1" max="10" step="1"><output id="micSensOut"></output></div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
+    <div class="fingerpill" id="fingerPill" hidden></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
     <div class="done" id="done" hidden>
@@ -311,6 +314,22 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
    Chords: C4+E4:2   Rests: r:1
    Add a riff by adding one entry here. */
 const SONGS = [
+  { id:"g1", drill:true, title:"Gym: One finger per key", lvl:0, hand:"right hand · thumb on C", bpm:84,
+    notes:"C4@1 D4@2 E4@3 F4@4 G4@5:2 G4@5 F4@4 E4@3 D4@2 C4@1:2 C4@1 D4@2 E4@3 F4@4 G4@5:2 G4@5 F4@4 E4@3 D4@2 C4@1:2" },
+  { id:"g2", drill:true, title:"Gym: Left hand, one finger per key", lvl:0, hand:"left hand · little finger on C", bpm:84,
+    notes:"C3@5 D3@4 E3@3 F3@2 G3@1:2 G3@1 F3@2 E3@3 D3@4 C3@5:2 C3@5 D3@4 E3@3 F3@2 G3@1:2 G3@1 F3@2 E3@3 D3@4 C3@5:2" },
+  { id:"g3", drill:true, title:"Gym: Finger independence", lvl:0, hand:"right hand · skip a finger", bpm:80,
+    notes:"C4@1 E4@3 D4@2 F4@4 E4@3 G4@5:2 G4@5 E4@3 F4@4 D4@2 E4@3 C4@1:2 C4@1 D4@2 C4@1 E4@3 C4@1 F4@4 C4@1 G4@5:2 G4@5 F4@4 G4@5 E4@3 G4@5 D4@2 G4@5 C4@1:2" },
+  { id:"g4", drill:true, title:"Gym: Thumb under (C major scale)", lvl:0, hand:"right hand · thumb tucks under at F", bpm:76,
+    notes:"C4@1 D4@2 E4@3 F4@1 G4@2 A4@3 B4@4 C5@5:2 C5@5 B4@4 A4@3 G4@2 F4@1 E4@3 D4@2 C4@1:2 C4@1 D4@2 E4@3 F4@1 G4@2 A4@3 B4@4 C5@5:2 C5@5 B4@4 A4@3 G4@2 F4@1 E4@3 D4@2 C4@1:2" },
+  { id:"g5", drill:true, title:"Gym: Left hand scale", lvl:0, hand:"left hand · finger 3 crosses over at A", bpm:76,
+    notes:"C3@5 D3@4 E3@3 F3@2 G3@1 A3@3 B3@2 C4@1:2 C4@1 B3@2 A3@3 G3@1 F3@2 E3@3 D3@4 C3@5:2 C3@5 D3@4 E3@3 F3@2 G3@1 A3@3 B3@2 C4@1:2 C4@1 B3@2 A3@3 G3@1 F3@2 E3@3 D3@4 C3@5:2" },
+  { id:"g6", drill:true, title:"Gym: Move the whole hand", lvl:0, hand:"right hand · lift, land the thumb on G", bpm:80,
+    notes:"C4@1 D4@2 E4@3 F4@4 G4@5 r G4@1 A4@2 B4@3 C5@4 D5@5 r D5@5 C5@4 B4@3 A4@2 G4@1 r G4@5 F4@4 E4@3 D4@2 C4@1:2" },
+  { id:"g7", drill:true, title:"Gym: Stretch to the octave", lvl:0, hand:"right hand · thumb and little finger", bpm:72,
+    notes:"C4@1 E4@3 C4@1 G4@5 C4@1 G4@5 C4@1 A4@5 C4@1 A4@5 C4@1 B4@5 C4@1 C5@5:2 C4@1+C5@5:2 E4@1+E5@5:2 G4@1+G5@5:2 C5@1+C6@5:4" },
+  { id:"g8", drill:true, title:"Gym: Arpeggio with thumb under", lvl:0, hand:"right hand · C E G, thumb under to the next C", bpm:72,
+    notes:"C4@1 E4@2 G4@3 C5@1 E5@2 G5@3 C6@5:2 C6@5 G5@3 E5@2 C5@1 G4@3 E4@2 C4@1:2" },
   { id:"d1", drill:true, title:"Warm-up: Five-finger walk", lvl:1, hand:"right hand · C D E F G", bpm:96,
     notes:"C4 D4 E4 F4 G4:2 G4 F4 E4 D4 C4:2 C4 D4 C4 D4 E4 F4 E4 F4 G4 F4 E4 D4 C4:4" },
   { id:"d2", drill:true, title:"Warm-up: Hop and skip", lvl:2, hand:"right hand · skips and dotted notes", bpm:96,
@@ -390,7 +409,10 @@ function parse(str){
   let t = 0; const ev = [];
   for (const tok of str.trim().split(/\s+/)) {
     const [n, d] = tok.split(":"); const dur = !d ? 1 : d.includes("/") ? (+d.split("/")[0]) / (+d.split("/")[1]) : parseFloat(d);
-    if (n !== "r") ev.push({ t, d: dur, p: n.split("+").map(toMidi) });
+    if (n !== "r") { const parts = n.split("+").map(x => x.split("@"));
+      const e = { t, d: dur, p: parts.map(x => toMidi(x[0])) };
+      if (parts.some(x => x[1])) e.f = parts.map(x => +x[1] || 0);
+      ev.push(e); }
     t += dur;
   }
   return { ev, end: t };
@@ -400,7 +422,74 @@ SONGS.forEach(s => {
   else Object.assign(s, parse(s.notes));
 });
 
+/* ---------- Fingering ----------
+   Hand-written fingers (NOTE@f) are kept. Missing ones are worked out per hand with a cost model:
+   each finger pair has a relaxed and a maximum comfortable span; thumb-under / finger-over crossings
+   are allowed only near the thumb; thumb on a black key costs extra. The cheapest path wins (Viterbi). */
+const FNAME = ["", "thumb", "index", "middle", "ring", "little"];
+const RELAX = {"1-2":2,"1-3":4,"1-4":5,"1-5":7,"2-3":2,"2-4":3,"2-5":5,"3-4":2,"3-5":3,"4-5":2};
+const MAXS  = {"1-2":5,"1-3":7,"1-4":9,"1-5":12,"2-3":4,"2-4":5,"2-5":8,"3-4":3,"3-5":5,"4-5":3};
+function stepCost(p1, f1, p2, f2, real2){            // pitches already mirrored for the left hand
+  let c = isBlack(real2) ? (f2 === 1 ? 2 : f2 === 5 ? 1 : 0) : 0;
+  const d = p2 - p1;
+  if (d === 0) return c + (f1 === f2 ? 0 : 1.5);
+  if (f1 === f2) return c + 12 + Math.abs(d) * .1;
+  const up = d > 0, span = Math.abs(d);
+  if (up ? f2 < f1 : f2 > f1) {                       // crossing
+    const thumbUnder = up ? f2 === 1 : f1 === 1, other = up ? f1 : f2;
+    if (thumbUnder && other >= 2 && other <= 4 && span <= 5) return c + 2.5 + (other === 4 ? 1 : other === 2 ? .5 : 0) + Math.abs(span - 2) * .4;
+    return c + 30;
+  }
+  const key = Math.min(f1,f2) + "-" + Math.max(f1,f2), R = RELAX[key], M = MAXS[key];
+  return c + Math.abs(span - R) * .5 + (span > M ? (span - M) * 2.5 : 0);
+}
+function handOf(s){
+  if (/^left hand/i.test(s.hand || "")) return () => "L";        // a piece that says which hand wins
+  if (/^right hand/i.test(s.hand || "")) return () => "R";
+  const all = s.ev.flatMap(e => e.p);
+  if (s.ev.every(e => e.p.length === 1)) { const med = all.slice().sort((a,b)=>a-b)[all.length >> 1]; const h = med < 55 ? "L" : "R"; return () => h; }
+  const hasL = all.some(m => m < 60), hasR = all.some(m => m >= 60);
+  if (!hasL) return () => "R"; if (!hasR) return () => "L";
+  return m => m < 60 ? "L" : "R";
+}
+function computeFingering(s){
+  if (s.fingered || !s.ev || !s.ev.length) return;
+  const H = handOf(s);
+  s.ev.forEach(e => { if (!e.f || e.f.length !== e.p.length) e.f = e.p.map(() => 0); e.h = e.p.map(m => H(m)); });
+  ["R","L"].forEach(hand => {
+    const geo = m => hand === "R" ? m : -m;
+    const line = [];
+    s.ev.forEach((e, i) => {
+      const idx = e.p.map((m,k) => k).filter(k => e.h[k] === hand); if (!idx.length) return;
+      if (idx.length === 1) { const k = idx[0]; line.push({ i, k, p: geo(e.p[k]), m: e.p[k], fixed: e.f[k] || 0 }); return; }
+      const sorted = idx.slice().sort((x,y) => geo(e.p[x]) - geo(e.p[y]));      // thumb side first
+      const n = sorted.length, span = geo(e.p[sorted[n-1]]) - geo(e.p[sorted[0]]);
+      const pat = n === 2 ? (span >= 7 ? [1,5] : span >= 4 ? [1,3] : [1,2]) : n === 3 ? (span >= 7 ? [1,3,5] : [1,2,4]) : [1,2,3,5,5];
+      sorted.forEach((k,j) => { if (!e.f[k]) e.f[k] = pat[Math.min(j, pat.length-1)]; });
+      const k = sorted[n-1]; line.push({ i, k, p: geo(e.p[k]), m: e.p[k], fixed: e.f[k] });
+    });
+    if (!line.length) return;
+    let cost = [1,2,3,4,5].map(f => line[0].fixed && line[0].fixed !== f ? 1e9 : 0); const back = [];
+    for (let j = 1; j < line.length; j++) {
+      const a = line[j-1], b = line[j], ea = s.ev[a.i], eb = s.ev[b.i];
+      const free = Math.abs(b.p - a.p) > 7 || eb.t - (ea.t + ea.d) > .9;      // a rest or a leap: the hand can lift and reposition
+      const nc = [], bk = [];
+      for (let f2 = 1; f2 <= 5; f2++) {
+        if (b.fixed && b.fixed !== f2) { nc.push(1e9); bk.push(1); continue; }
+        let best = 1e18, bf = 1;
+        for (let f1 = 1; f1 <= 5; f1++) { const st = stepCost(a.p, f1, b.p, f2, b.m); const c = cost[f1-1] + (free ? Math.min(3, st * .25) : st); if (c < best) { best = c; bf = f1; } }
+        nc.push(best); bk.push(bf);
+      }
+      cost = nc; back.push(bk);
+    }
+    let f = cost.indexOf(Math.min(...cost)) + 1;
+    for (let j = line.length - 1; j >= 0; j--) { const it = line[j]; if (!s.ev[it.i].f[it.k]) s.ev[it.i].f[it.k] = f; if (j > 0) f = back[j-1][f-1]; }
+  });
+  s.fingered = true;
+}
+
 const LEVELS = [
+  { n:0, name:"Finger gym",       what:"Short exercises for using the right finger on each key. The circles show which finger: 1 thumb, 2 index, 3 middle, 4 ring, 5 little. White circle = right hand, dark circle = left hand." },
   { n:1, name:"Five fingers",     what:"One hand rests on five neighbouring keys and steps between them." },
   { n:2, name:"Skips and rhythm", what:"Jumps between notes, long and short notes, dotted rhythms." },
   { n:3, name:"Moving the hand",  what:"The tune leaves the five-key spot. Black keys join in." },
@@ -415,7 +504,7 @@ const PROFILES = [
   { id:"mom",   name:"Mama",   note:"Climbs the levels and earns stars", scored:true,  locks:true,  col:"#63b85a", first:"d1" },
   { id:"karolis", name:"Karolis", note:"Climbs the levels and earns stars", scored:true, locks:true, col:"#b07ad8", first:"d1" },
 ];
-const pathSongs = () => SONGS.filter(s => s.lvl >= 1 && !s.whole).sort((a,b) => a.lvl - b.lvl || (b.drill?1:0) - (a.drill?1:0));
+const pathSongs = () => SONGS.filter(s => s.lvl >= 0 && !s.whole && !s.user).sort((a,b) => a.lvl - b.lvl || (b.drill?1:0) - (a.drill?1:0));
 
 /* ---------- Prefs (per device, best effort) ---------- */
 const store = { get(k,d){ try{ const v = localStorage.getItem("riffroom."+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
@@ -425,7 +514,7 @@ const store = { get(k,d){ try{ const v = localStorage.getItem("riffroom."+k); re
 let P = null, PD = null;               // current profile and its saved data
 function loadProfile(id){
   P = PROFILES.find(p=>p.id===id) || PROFILES[0];
-  PD = Object.assign({ mode:"wait", names:true, song:P.first, stats:{} }, store.get("p."+P.id, {}));
+  PD = Object.assign({ mode:"wait", names:true, fingers:true, song:P.first, stats:{} }, store.get("p."+P.id, {}));
   store.set("profile", P.id);
 }
 function saveProfile(){ PD.ts = Date.now(); store.set("p."+P.id, PD); syncSoon(); }
@@ -444,6 +533,7 @@ const S = {
   mode: PD.mode,                        // "wait" | "flow"
   demo: false,                          // Listen playback on top of either mode
   names: PD.names,
+  fingers: PD.fingers !== false,
   sound: true,
   bpm: 100,
   pos: 0, idx: 0, got: new Set(), hits: new Set(), finished: false, started: false,
@@ -572,10 +662,11 @@ function reset(){
   stopDemo(true);
 }
 function setSong(s){
+  computeFingering(s);
   S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); } S.bpm = s.bpm;
   $("tempo").value = s.bpm; $("tempoOut").value = s.bpm;
   $("songTitle").textContent = s.title;
-  $("songMeta").textContent = s.lvl ? `Level ${s.lvl} · ${s.hand}` : s.hand;
+  $("songMeta").textContent = s.lvl ? `Level ${s.lvl} · ${s.hand}` : s.lvl === 0 && !s.user ? `Finger gym · ${s.hand}` : s.hand;
   computeRange(); reset(); renderList(); if (SH.open) renderSheet(); levelOpenBefore = s.lvl ? levelOpen(s.lvl+1) : true;
   if (!S.started) hint.hidden = false;
   hint.textContent = S.mode==="wait" ? "Press the glowing key" : "Play each note as it reaches the line";
@@ -639,7 +730,7 @@ function finish(){
 }
 let levelOpenBefore = true;
 function nextSong(s){
-  if (!s.lvl) return null;
+  if (s.user || s.lvl == null) return null;
   const base = s.practice ? s.from : s.whole ? SONGS.find(x => x.id === s.parent) : s;
   const list = pathSongs(), i = list.indexOf(base);
   for (let j=i+1;j<list.length;j++) if (levelOpen(list[j].lvl)) return list[j];
@@ -823,15 +914,21 @@ function draw(now){
   ev.forEach((e,i) => {
     const yb = HIT - (e.t - S.pos)*ppb, h = Math.max(14, e.d*ppb - 5), yt = yb - h;
     if (yt > HIT || yb < -10) return;
-    e.p.forEach(m => {
+    e.p.forEach((m, j) => {
       const k = g.keyX(m), pad = isBlack(m) ? 1 : Math.max(3, g.ww*.1);
+      const fi = S.fingers && e.f ? e.f[j] : 0, br = Math.min(11, (k.w - pad*2) * .42);
       const done = S.mode==="wait" ? i < S.idx : S.hits.has(i+":"+m);
       const current = S.mode==="wait" && !S.demo && i === S.idx;
       cx.globalAlpha = done ? .28 : 1;
       cx.fillStyle = PCOL[m%12];
       rr(k.x+pad, yt, k.w-pad*2, h, Math.min(10, (k.w-pad*2)/2)); cx.fill();
       if (current) { cx.lineWidth = 3; cx.strokeStyle = `rgba(255,255,255,${.45+.5*pulse})`; cx.stroke(); }
-      if (S.names && h > 18 && k.w > 16) {
+      if (fi && br >= 5) {
+        const L = e.h && e.h[j] === "L", bx = k.x + k.w/2, by = yb - br - 3;
+        cx.fillStyle = L ? "#14161d" : "#ffffff"; cx.beginPath(); cx.arc(bx, by, br, 0, 7); cx.fill();
+        cx.fillStyle = L ? "#ffffff" : "#14161d"; cx.font = `800 ${Math.round(br * 1.3)}px ${FONT}`; cx.fillText(fi, bx, by + .5);
+        if (S.names && h > br*2 + 24 && k.w > 16) { cx.fillStyle = "rgba(15,17,24,.85)"; cx.font = `700 ${Math.min(14, k.w*.38)}px ${FONT}`; cx.fillText(NAMES[m%12], bx, by - br - 10); }
+      } else if (S.names && h > 18 && k.w > 16) {
         cx.fillStyle = "rgba(15,17,24,.85)"; cx.font = `700 ${Math.min(16, k.w*.42)}px ${FONT}`;
         cx.fillText(NAMES[m%12], k.x+k.w/2, yb - Math.min(h/2, 14));
       }
@@ -845,11 +942,15 @@ function draw(now){
   // keys (paint the keybed first so gaps between keys never show old frames)
   cx.fillStyle = "#0d0f16"; cx.fillRect(0, HIT, W, H - HIT);
   const want = new Set(S.mode==="wait" && !S.demo && !S.finished && ev[S.idx] ? ev[S.idx].p.filter(p=>!S.got.has(p)) : []);
+  const wantF = new Map(); if (S.fingers && want.size && ev[S.idx].f) ev[S.idx].p.forEach((m,j) => { if (ev[S.idx].f[j]) wantF.set(m, { f: ev[S.idx].f[j], L: ev[S.idx].h && ev[S.idx].h[j] === "L" }); });
+  const keyBadge = (x, y, r, w) => { cx.fillStyle = w.L ? "#14161d" : "#ffffff"; cx.strokeStyle = "#14161d"; cx.lineWidth = 1.5; cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill(); cx.stroke();
+    cx.fillStyle = w.L ? "#ffffff" : "#14161d"; cx.font = `800 ${Math.round(r*1.3)}px ${FONT}`; cx.fillText(w.f, x, y + .5); };
   for (const m of g.whites) {
     const k = g.keyX(m); const on = S.held.has(m);
     cx.fillStyle = on ? PCOL[m%12] : COL.ivory; rr(k.x+1, HIT, k.w-2, KH-2, 6); cx.fill();
     if (want.has(m) && !on) { cx.globalAlpha = .25+.45*pulse; cx.fillStyle = PCOL[m%12]; rr(k.x+1, HIT, k.w-2, KH-2, 6); cx.fill(); cx.globalAlpha = 1; }
-    if (S.names) {
+    if (wantF.has(m) && !on) keyBadge(k.x+k.w/2, HIT+KH-24, Math.min(13, k.w*.36), wantF.get(m));
+    else if (S.names) {
       cx.fillStyle = on ? "#14161d" : "#6b6455"; cx.font = `700 ${Math.min(17, k.w*.4)}px ${FONT}`;
       cx.fillText(NAMES[m%12], k.x+k.w/2, HIT+KH-22);
     }
@@ -859,12 +960,26 @@ function draw(now){
     const k = g.keyX(m); const on = S.held.has(m);
     cx.fillStyle = on ? PCOL[m%12] : COL.ebony; rr(k.x, HIT, k.w, g.bh, 4); cx.fill();
     if (want.has(m) && !on) { cx.globalAlpha = .35+.5*pulse; cx.fillStyle = PCOL[m%12]; rr(k.x, HIT, k.w, g.bh, 4); cx.fill(); cx.globalAlpha = 1; }
+    if (wantF.has(m) && !on) keyBadge(k.x+k.w/2, HIT+g.bh-16, Math.min(11, k.w*.42), wantF.get(m));
   }
+  fingerHint(want, wantF);
 
   // sparks
   S.sparks.forEach(p => { cx.globalAlpha = Math.min(1, p.life*2); cx.fillStyle = p.c;
     if (p.sq) cx.fillRect(p.x, p.y, p.r*1.6, p.r); else { cx.beginPath(); cx.arc(p.x,p.y,p.r,0,7); cx.fill(); } });
   cx.globalAlpha = 1;
+}
+
+let lastFH = "";
+function fingerHint(want, wantF){
+  const el = $("fingerPill"); if (!el) return;
+  let t = "";
+  if (wantF.size) {
+    const by = { R:[], L:[] }; wantF.forEach(w => by[w.L ? "L" : "R"].push(w.f));
+    const side = (fs, name) => fs.length ? `${name} ${fs.sort().join("+")}` + (fs.length === 1 ? ` · ${FNAME[fs[0]]}` : "") : "";
+    t = [side(by.R, "Right hand"), side(by.L, "Left hand")].filter(Boolean).join("   ");
+  }
+  if (t !== lastFH) { lastFH = t; el.textContent = t; el.hidden = !t; }
 }
 
 /* ---------- MIDI file import ---------- */
@@ -956,38 +1071,41 @@ function toAbc(song){
   voices.forEach((V, vi) => {
     const items = [];
     const snap = x => song.user ? Math.round(x / 3) * 3 : Math.round(x);   // files and recordings: snap to sixteenths
-    evs.forEach((e, i) => { const p = e.p.filter(V.test); if (p.length) items.push({ i, p, s: snap(e.t * tpb), d: e.d }); });
+    evs.forEach((e, i) => { const ks = e.p.map((m,k) => k).filter(k => V.test(e.p[k])); if (!ks.length) return;
+      items.push({ i, p: ks.map(k => e.p[k]), f: S.fingers && e.f ? ks.map(k => e.f[k]) : null, s: snap(e.t * tpb), d: e.d }); });
     let pos = 0, ord = 0, acc = {}, tok = [], trip = 0;
     const barAt = x => x > 0 && (x - pick) % barLen === 0 && x >= pick;
     const nextBar = x => x < pick ? pick : pick + (Math.floor((x - pick) / barLen) + 1) * barLen;
-    const emit = (pitches, len, i) => {         // len in 48ths, may cross bars
+    const emit = (pitches, len, i, fing) => {   // len in 48ths, may cross bars
+      let first = true;
       while (len > 0) {
         const room = nextBar(pos) - pos, take = Math.min(len, room > 0 ? room : len);
         const pieces = take % 3 === 0 ? split(take) : null;
         if (!pieces) {                           // triplet value: written as 3-in-2
           const w = take * 3 / 2; if (trip === 0) tok.push("(3"); trip = (trip + 1) % 3;
-          tok.push(chord(pitches, w)); if (pitches) { if (i != null && map[i] == null) map[i] = [vi, ord]; ord++; }
+          tok.push(chord(pitches, w, first ? fing : null)); first = false; if (pitches) { if (i != null && map[i] == null) map[i] = [vi, ord]; ord++; }
         } else pieces.forEach((pc, k) => {
           const last = k === pieces.length - 1 && take === len;
-          tok.push(chord(pitches, pc) + (pitches && !last ? "-" : ""));
+          tok.push(chord(pitches, pc, first ? fing : null) + (pitches && !last ? "-" : "")); first = false;
           if (pitches) { if (i != null && map[i] == null) map[i] = [vi, ord]; ord++; }
         });
         pos += take; len -= take;
         if (barAt(pos)) { tok.push("|"); acc = {}; }
       }
     };
-    const chord = (pitches, len) => {
+    const chord = (pitches, len, fing) => {
       if (!pitches) return "z" + (len === 1 ? "" : len);
+      const deco = fing && pitches.length === 1 && fing[0] ? `!${fing[0]}!` : "";
       const ns = pitches.map(m => { const { acc: a, base } = abcPitch(m); let pre = a;
         if (!a && acc[base]) { pre = "="; acc[base] = false; } else if (a) acc[base] = true; return pre + base; });
-      return (ns.length > 1 ? "[" + ns.join("") + "]" : ns[0]) + len;
+      return deco + (ns.length > 1 ? "[" + ns.join("") + "]" : ns[0]) + len;
     };
     items.forEach((it, k) => {
       if (it.s > pos) emit(null, it.s - pos);
       const next = items[k+1] ? items[k+1].s : it.s + Math.max(3, Math.round(it.d * tpb));
       const len = Math.max(3, Math.min(next - it.s, Math.round(it.d * tpb) || 3));
       const L = !song.user && (len % 3 === 0 || len % 4 === 0) ? len : Math.round(len / 3) * 3 || 3;
-      emit(it.p, L, it.i);
+      emit(it.p, L, it.i, it.f);
       if (next > pos && items[k+1]) emit(null, next - pos);
     });
     if (tok[tok.length-1] !== "|") tok.push("|]"); else tok[tok.length-1] = "|]";
@@ -1260,7 +1378,7 @@ function songRow(s, open){
   const b = document.createElement("button"); b.className = "song" + (s.drill ? " drill" : "");
   b.setAttribute("aria-current", s===S.song || S.song.from===s);
   b.disabled = !open;
-  const right = P.scored && s.lvl ? starRow(starsOf(s.id)) : `<span class="len">${s.ev.length} notes</span>`;
+  const right = P.scored && !s.user ? starRow(starsOf(s.id)) : `<span class="len">${s.ev.length} notes</span>`;
   const pcs = [...new Set(s.ev.flatMap(e=>e.p.map(p=>p%12)))].sort((a,c)=>a-c);
   b.innerHTML = `<span class="dots">${pcs.map(p=>`<i style="background:${PCOL[p]}"></i>`).join("")}</span>
     <span class="nm"><b></b><small></small></span>${right}`;
@@ -1283,7 +1401,7 @@ function renderList(){
     const list = pathSongs().filter(s=>s.lvl===L.n), open = levelOpen(L.n);
     const got = list.reduce((a,s)=>a+starsOf(s.id),0), max = list.length*5;
     const wrap = document.createElement("section"); wrap.className = "group" + (open ? "" : " locked");
-    wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">Level ${L.n}</span> <span class="lvl-name"></span></h3>
+    wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">${L.n === 0 ? "Warm-up" : "Level " + L.n}</span> <span class="lvl-name"></span></h3>
       ${P.scored ? `<span class="lvl-stars">${got}/${max} ★</span>` : ""}</div><p class="lvl-what"></p><ul></ul>`;
     wrap.querySelector(".lvl-name").textContent = L.name;
     wrap.querySelector(".lvl-what").textContent = open ? L.what
@@ -1318,6 +1436,7 @@ function renderWho(){
 }
 function switchProfile(id){
   loadProfile(id); S.names = PD.names; $("namesBtn").setAttribute("aria-pressed", S.names);
+  S.fingers = PD.fingers !== false; $("fingersBtn").setAttribute("aria-pressed", S.fingers);
   $("who").hidden = true; renderWho(); setMode(PD.mode);
   if (REC.on) stopRec();
   SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open);
@@ -1347,6 +1466,7 @@ $("mFlow").onclick = () => setMode("flow");
 $("listenBtn").onclick = () => S.demo ? stopDemo(false) : startDemo();
 $("tempo").oninput = e => { S.bpm = +e.target.value; $("tempoOut").value = S.bpm; };
 $("namesBtn").setAttribute("aria-pressed", S.names);
+$("fingersBtn").onclick = () => { S.fingers = !S.fingers; PD.fingers = S.fingers; saveProfile(); $("fingersBtn").setAttribute("aria-pressed", S.fingers); if (SH.open) renderSheet(); };
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
 $("pianoBtn").onclick = () => connectPiano(false);
