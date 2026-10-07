@@ -65,7 +65,7 @@ button.piano.on { background: var(--brass); color: #1a1408; }
 .stage { position: relative; flex: 1; min-height: 0; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .hint {
-  position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
+  position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
   background: rgba(18,21,31,.85); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px 16px; font-size: 15px; pointer-events: none; text-align: center; max-width: calc(100% - 32px);
 }
@@ -142,7 +142,25 @@ li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92
 .stars i.on { color: var(--brass); }
 .hud { position: absolute; left: 16px; top: 12px; display: flex; gap: 10px; background: rgba(18,21,31,.8); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .hud .wrong { color: #e98a80; }
-.fingerpill { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; background: rgba(18,21,31,.88); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 700; white-space: nowrap; pointer-events: none; z-index: 2; }
+/* Hands guide: two hands seen from above (as the player sees their own), the finger to use lights up and taps */
+.hands { position: absolute; left: 50%; transform: translateX(-50%); top: 10px; display: flex; gap: 10px; padding: 6px 10px 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.35); pointer-events: none; z-index: 2; }
+.hand { display: grid; justify-items: center; gap: 2px; transition: opacity .2s; }
+.hand.idle .palm, .hand.idle .fing path { fill: #3a3f50; stroke: #555b70; }
+.hand.idle .fing circle { fill: #4a5064; stroke: #555b70; }
+.hand.idle .fing text { fill: #9097ab; }
+.hand.idle small { opacity: .5; }
+.hand svg { width: clamp(70px, 10vw, 112px); height: auto; display: block; overflow: visible; }
+.hand small { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.fing path { fill: #f2dcc6; stroke: #a5806a; stroke-width: 1.6; transition: fill .15s; }
+.palm { fill: #f2dcc6; stroke: #a5806a; stroke-width: 1.6; }
+.fing circle { fill: #ffffff; stroke: #a5806a; stroke-width: 1; }
+.fing text { font: 800 10px var(--font-body); fill: #6b5444; text-anchor: middle; dominant-baseline: central; }
+.fing.on path { fill: var(--fc, #e2b25c); stroke: #14161d; stroke-width: 2.2; }
+.fing.on circle { stroke: #14161d; stroke-width: 1.6; }
+.fing.on text { fill: #14161d; font-size: 11px; }
+.fing.on { animation: tap .75s ease-in-out infinite; transform-box: fill-box; }
+@keyframes tap { 0%, 100% { transform: translateY(-3px); } 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .fing.on { animation: none; } }
 .done-stars { display: flex; gap: 6px; justify-content: center; font-size: 40px; line-height: 1; }
 .done-stars i { font-style: normal; color: #3a4057; }
 .done-stars i.on { color: var(--brass); animation: pop .45s cubic-bezier(.3,1.6,.5,1) both; }
@@ -263,7 +281,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <label for="micSens">Sensitivity</label><input type="range" id="micSens" min="1" max="10" step="1"><output id="micSensOut"></output></div>
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
-    <div class="fingerpill" id="fingerPill" hidden></div>
+    <div class="hands" id="handsGuide" hidden aria-live="polite"></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
     <div class="done" id="done" hidden>
@@ -1026,16 +1044,44 @@ function draw(now){
   cx.globalAlpha = 1;
 }
 
+/* Hand pictures. Geometry is for the right hand seen from above (thumb on the left);
+   the left hand is the mirror image, so its thumb is on the right, just like the real hands over the keys. */
+const HAND_FINGERS = [
+  { f:1, cx:22, top:56, w:17, bottom:100, rot:-26 },  // thumb, angled out
+  { f:2, cx:37, top:17, w:16, bottom:72 },
+  { f:3, cx:56, top:7,  w:16, bottom:72 },
+  { f:4, cx:75, top:13, w:16, bottom:72 },
+  { f:5, cx:93, top:30, w:14, bottom:74 },
+];
+function handSVG(side){
+  const mx = x => side === "L" ? 112 - x : x, flip = side === "L" ? -1 : 1;
+  const fingers = HAND_FINGERS.map(d => {
+    const x = mx(d.cx), rot = (d.rot || 0) * flip, h = d.bottom - d.top, ny = d.top + d.w / 2 + 1;
+    return `<g class="fing" data-f="${d.f}"><g transform="rotate(${rot} ${x} ${d.bottom})">
+      <path d="M${x - d.w/2},${d.bottom} V${d.top + d.w/2} a${d.w/2},${d.w/2} 0 0 1 ${d.w},0 V${d.bottom} Z"/>
+      <circle cx="${x}" cy="${ny}" r="7"/><text x="${x}" y="${ny}" transform="rotate(${-rot} ${x} ${ny})">${d.f}</text></g></g>`;
+  }).join("");
+  const palm = `<path class="palm" d="M${mx(24)},72 C${mx(24)},66 ${mx(30)},64 ${mx(36)},64 L${mx(96)},66 C${mx(102)},66 ${mx(104)},72 ${mx(103)},78 L${mx(99)},112 C${mx(98)},121 ${mx(90)},126 ${mx(80)},126 L${mx(42)},126 C${mx(32)},126 ${mx(26)},120 ${mx(25)},110 Z"/>`;
+  return `<div class="hand idle" data-side="${side}"><svg viewBox="0 0 112 130" aria-hidden="true">${palm}${fingers}</svg><small>${side === "L" ? "LEFT" : "RIGHT"}</small></div>`;
+}
 let lastFH = "";
 function fingerHint(want, wantF){
-  const el = $("fingerPill"); if (!el) return;
-  let t = "";
-  if (wantF.size) {
-    const by = { R:[], L:[] }; wantF.forEach(w => by[w.L ? "L" : "R"].push(w.f));
-    const side = (fs, name) => fs.length ? `${name} ${fs.sort().join("+")}` + (fs.length === 1 ? ` · ${FNAME[fs[0]]}` : "") : "";
-    t = [side(by.R, "Right hand"), side(by.L, "Left hand")].filter(Boolean).join("   ");
-  }
-  if (t !== lastFH) { lastFH = t; el.textContent = t; el.hidden = !t; }
+  const el = $("handsGuide"); if (!el) return;
+  const list = []; wantF.forEach((w, m) => list.push({ side: w.L ? "L" : "R", f: w.f, col: PCOL[m % 12] }));
+  const key = list.map(x => x.side + x.f + x.col).sort().join("|");
+  if (key === lastFH) return; lastFH = key;
+  if (!list.length) { el.hidden = true; return; }
+  if (!el.firstChild) el.innerHTML = handSVG("L") + handSVG("R");
+  el.querySelectorAll(".hand").forEach(h => {
+    const side = h.dataset.side, mineHere = list.filter(x => x.side === side);
+    h.classList.toggle("idle", !mineHere.length);
+    h.querySelectorAll(".fing").forEach(g => {
+      const hit = mineHere.find(x => x.f === +g.dataset.f);
+      g.classList.toggle("on", !!hit); g.style.setProperty("--fc", hit ? hit.col : "");
+    });
+  });
+  el.setAttribute("aria-label", list.map(x => `${x.side === "L" ? "Left" : "Right"} hand, finger ${x.f} (${FNAME[x.f]})`).join(", "));
+  el.hidden = false;
 }
 
 /* ---------- MIDI file import ---------- */
