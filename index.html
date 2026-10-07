@@ -176,6 +176,8 @@ li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92
 .hud { position: absolute; left: 16px; top: 12px; display: flex; gap: 10px; background: rgba(18,21,31,.8); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .hud .wrong { color: #e98a80; }
 /* Hands guide: two hands seen from above (as the player sees their own), the finger to use lights up and taps */
+.hands .hands-x { pointer-events: auto; position: absolute; right: -12px; top: -12px; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--chip); color: var(--muted); font: 700 13px var(--font-body); cursor: pointer; }
+.hands .hands-x:hover { color: var(--fg); }
 .hands { position: absolute; left: 50%; transform: translateX(-50%); top: 10px; display: flex; gap: 10px; padding: 6px 10px 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.35); pointer-events: none; z-index: 2; }
 .hand { display: grid; justify-items: center; gap: 2px; transition: opacity .2s; }
 .hand.idle .palm, .hand.idle .fing path { fill: #3a3f50; stroke: #555b70; }
@@ -277,7 +279,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="more" id="morePanel" hidden role="dialog" aria-label="More settings">
       <div class="more-row"><span>Speed <small class="muted">(for Play along and Listen)</small></span><span class="stepper speedStep"><button data-d="-10" aria-label="Slower">−</button><output class="speedOut">100%</output><button data-d="10" aria-label="Faster">+</button></span></div>
       <div class="more-group"><h4>Show</h4>
-        <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button></div></div>
+        <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button><button class="c" id="handsPicBtn" aria-pressed="true">Hand picture</button></div></div>
       <div class="more-group"><h4>Extras</h4>
         <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
     </div>
@@ -1201,8 +1203,11 @@ function fingerHint(want, wantF){
   const list = []; wantF.forEach((w, m) => list.push({ side: w.L ? "L" : "R", f: w.f, col: PCOL[m % 12] }));
   const key = list.map(x => x.side + x.f + x.col).sort().join("|");
   if (key === lastFH) return; lastFH = key;
-  if (!list.length) { el.hidden = true; return; }
-  if (!el.firstChild) el.innerHTML = handSVG("L") + handSVG("R");
+  if (!list.length || PD.handsPic === false) { el.hidden = true; return; }
+  if (!el.firstChild) {
+    el.innerHTML = handSVG("L") + handSVG("R") + `<button class="hands-x" aria-label="Hide the hand picture" title="Hide (bring it back in More)">✕</button>`;
+    el.querySelector(".hands-x").onclick = () => setHandsPic(false);
+  }
   el.querySelectorAll(".hand").forEach(h => {
     const side = h.dataset.side, mineHere = list.filter(x => x.side === side);
     h.classList.toggle("idle", !mineHere.length);
@@ -1678,6 +1683,7 @@ function renderWho(){
 function switchProfile(id){
   loadProfile(id); S.names = PD.names; $("namesBtn").setAttribute("aria-pressed", S.names);
   S.fingers = PD.fingers !== false; $("fingersBtn").setAttribute("aria-pressed", S.fingers);
+  $("handsPicBtn").setAttribute("aria-pressed", PD.handsPic !== false); lastFH = "";
   $("who").hidden = true; renderWho(); setMode(PD.mode);
   if (REC.on) stopRec();
   SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open); $("scoreBtn").hidden = SH.open;
@@ -1720,6 +1726,12 @@ document.querySelectorAll(".speedStep button").forEach(b => b.onclick = () => {
   applySpeed();
 });
 $("namesBtn").setAttribute("aria-pressed", S.names);
+function setHandsPic(on){
+  PD.handsPic = on; saveProfile(); $("handsPicBtn").setAttribute("aria-pressed", on);
+  lastFH = ""; if (!on) $("handsGuide").hidden = true;
+  if (!on) flash("Hand picture hidden. Bring it back in More → Hand picture.", 3500);
+}
+$("handsPicBtn").onclick = () => setHandsPic(PD.handsPic === false);
 $("fingersBtn").onclick = () => { S.fingers = !S.fingers; PD.fingers = S.fingers; saveProfile(); $("fingersBtn").setAttribute("aria-pressed", S.fingers); if (SH.open) renderSheet(); };
 $("namesBtn").onclick = () => { S.names = !S.names; PD.names = S.names; saveProfile(); $("namesBtn").setAttribute("aria-pressed", S.names); };
 $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").setAttribute("aria-pressed", S.sound); };
