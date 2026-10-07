@@ -1,0 +1,41 @@
+# Riff Room for iPad and iPhone.
+# Generate the Xcode project with:  brew install xcodegen && xcodegen
+name: RiffRoom
+options:
+  bundleIdPrefix: app.pianoriffs
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  RiffRoom:
+    type: application
+    platform: iOS
+    sources:
+      - path: RiffRoom
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.pianoriffs.riffroom
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: RiffRoom/Info.plist
+      properties:
+        CFBundleDisplayName: Riff Room
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: Riff Room listens to your piano to check which notes you play.
+        NSBluetoothAlwaysUsageDescription: Riff Room connects to Bluetooth MIDI pianos so it can see which keys you press.
+        ITSAppUsesNonExemptEncryption: false

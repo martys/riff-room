@@ -22,3 +22,7 @@ The code is never stored on the server; data is filed under its SHA-256 hash.
 Saves carry a version number; if two devices save at once, the app merges (best stars and scores win,
 newest settings win, recordings are kept) and saves again.
 Anyone with the family code can read and change the family's progress.
+
+## iPad app
+
+`ios/` holds a small native wrapper (CoreMIDI bridge + Bluetooth MIDI pairing). See `ios/README.md` to build it on a Mac.
