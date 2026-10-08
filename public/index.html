@@ -36,6 +36,8 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
+/* No double-tap zoom anywhere (a quick double tap on − or + used to zoom the page). Pinch still works outside the piano. */
+html, body, button, a, input, label, select, output { touch-action: manipulation; }
 body {
   background: var(--bg); color: var(--fg);
   font-family: var(--font-body); font-size: 15px;
@@ -982,6 +984,18 @@ cv.addEventListener("wheel", e => { if (e.clientY - cv.getBoundingClientRect().t
 
 // multi-touch + glide
 const ptr = new Map();
+/* If the page did get zoomed in, pinching back out over the piano can't work (the piano takes every touch),
+   so snap the zoom back to normal: on any touch of the piano or lane, and a moment after a stray zoom. */
+function unzoom(){
+  const vv = window.visualViewport; if (!vv || vv.scale <= 1.01) return;
+  let m = document.querySelector('meta[name="viewport"]');
+  if (!m) { m = document.createElement("meta"); m.name = "viewport"; m.content = "width=device-width, initial-scale=1"; document.head.appendChild(m); }
+  const base = m.content.replace(/,\s*(maximum-scale|user-scalable)=[^,]*/g, "");
+  m.content = base + ", maximum-scale=1, user-scalable=0";
+  setTimeout(() => { m.content = base; }, 400);
+}
+if (window.visualViewport) visualViewport.addEventListener("resize", () => { clearTimeout(unzoom.t); unzoom.t = setTimeout(unzoom, 2500); });
+cv.addEventListener("touchstart", unzoom, { passive: true });
 cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
   if (m==null) { if (DRAG.id == null && !S.demo) { DRAG.id = e.pointerId; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
