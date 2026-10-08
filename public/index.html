@@ -175,6 +175,9 @@ li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92
 .stars { display: inline-flex; gap: 1px; font-size: 13px; color: #464c63; }
 .stars i { font-style: normal; }
 .stars i.on { color: var(--brass); }
+.loopbar { position: absolute; left: 16px; top: 52px; z-index: 3; display: flex; align-items: center; gap: 8px; background: rgba(18,21,31,.92); border: 1px solid var(--brass); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.loopbar .loop-ic { color: var(--brass); font-weight: 800; }
+.loopbar button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--chip); color: var(--muted); font: 700 12px var(--font-body); cursor: pointer; padding: 0; }
 .hud { position: absolute; left: 16px; top: 12px; display: flex; gap: 10px; background: rgba(18,21,31,.8); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .hud .wrong { color: #e98a80; }
 /* Hands guide: two hands seen from above (as the player sees their own), the finger to use lights up and taps */
@@ -288,6 +291,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button><button class="c" id="handsPicBtn" aria-pressed="true">Hand picture</button></div></div>
       <div class="more-group"><h4>Extras</h4>
         <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
+      <p class="muted" style="margin:2px 0 0">Tip: drag the falling notes to move through the piece. Tap a note, then another, to loop that part.</p>
     </div>
   </header>
 
@@ -326,6 +330,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hands" id="handsGuide" hidden aria-live="polite"></div>
+    <div class="loopbar" id="loopBar" hidden><span class="loop-ic">⟲</span><span id="loopText">Loop</span><button id="loopX" aria-label="Stop looping" title="Stop looping">✕</button></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
     <div class="done" id="done" hidden>
@@ -627,6 +632,7 @@ const S = {
   fx: [],                               // Play along hit effects: rings, light beams, "Perfect!" labels
   combo: 0, missNext: 0,
 };
+const LOOP = { a:null, b:null, pass:0, clean:0, wrong0:0 };   // looped part (event indexes), see tapLane()
 
 /* ---------- Audio: a small piano-ish synth ---------- */
 let ac = null, master = null; const voices = new Map();
@@ -729,7 +735,7 @@ function judge(m, src){
     if (need.includes(m)) {
       if (S.got.has(m)) return;
       S.got.add(m); spark(m); R.pts += 100;
-      if (need.every(p=>S.got.has(p))) { accompany(cur); S.idx++; S.got.clear(); if (S.idx>=ev.length) finish(); }
+      if (need.every(p=>S.got.has(p))) { accompany(cur); S.idx++; S.got.clear(); if (LOOP.b != null && S.idx > LOOP.b) loopEnd(); else if (S.idx>=ev.length) finish(); }
     } else { R.wrong++; R.pts -= 50; mark(S.idx); }
   } else {
     let best = -1, bd = 9;
@@ -738,7 +744,7 @@ function judge(m, src){
       if (e.p.some((x,j) => x === m && mine(e,j)) && !S.hits.has(i+":"+m) && d < bd) { best = i; bd = d; }
     }
     if (best >= 0) { S.hits.add(best+":"+m); R.pts += bd <= .15 ? 100 : bd <= .35 ? 70 : 40; hitFx(m, bd, ev[best].t - S.pos); }
-    else if (S.pos > ev[0].t - 1) { R.wrong++; R.pts -= 30; breakCombo();
+    else if (S.go && S.pos > ev[0].t - 1) { R.wrong++; R.pts -= 30; breakCombo();   // (the key that starts a paused run isn't a mistake)
       let ni = 0, nd = 1e9; ev.forEach((e,i)=>{ const d=Math.abs(e.t-S.pos); if(d<nd){nd=d;ni=i;} }); mark(ni); }
   }
   hud();
@@ -770,9 +776,11 @@ function reset(){
   S.pos = first - (S.mode==="wait" ? 2.5 : 4);
   $("done").hidden = true;
   stopDemo(true);
+  if (LOOP.b != null) { LOOP.pass = 1; LOOP.clean = 0; loopJump(false); loopUi(); }
 }
 function setSong(s){
   computeFingering(s);
+  if (S.song !== s) { LOOP.a = LOOP.b = null; $("loopBar").hidden = true; }
   S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); }
   S.speed = (PD.speeds && PD.speeds[s.id]) || 100; applySpeed();
   $("songTitle").textContent = s.title;
@@ -959,7 +967,65 @@ function keyAt(x,y){
 
 /* Drag the falling notes up or down (or use a mouse wheel) to move back and forth through the piece.
    Dragging down brings later notes to the keys, like scrolling a list. A run you moved around in isn't scored. */
-const DRAG = { id:null, y:0, pos:0, moved:false };
+const DRAG = { id:null, x:0, y:0, pos:0, moved:false };
+
+/* Loop a part: tap a falling note to mark where the part starts, tap another to mark where it ends.
+   The part then repeats. In Play along, two clean passes in a row nudge the speed up 10% (up to 100%). Loops aren't scored. */
+const barOf = i => { const ev = S.song.ev; return Math.max(1, Math.floor((ev[i].t - (S.song.pickup || 0)) / (S.song.bar || 4)) + 1); };
+function noteAt(x, y){
+  const ev = S.song.ev, g = geom(), ppb = lanePPB();
+  for (let i = ev.length - 1; i >= 0; i--) {
+    const e = ev[i], yb = HIT - (e.t - S.pos)*ppb, h = Math.max(14, e.d*ppb - 5);
+    if (y > yb + 4 || y < yb - h - 4) continue;
+    if (e.p.some(m => { const k = g.keyX(m); return x >= k.x - 2 && x <= k.x + k.w + 2; })) return i;
+  }
+  return -1;
+}
+function tapLane(x, y){
+  const i = noteAt(x, y); if (i < 0) return;
+  if (LOOP.a == null || LOOP.b != null) {
+    LOOP.a = i; LOOP.b = null; loopUi();
+    flash("Loop starts here. Now tap the last note of the part.", 3500);
+  } else {
+    LOOP.b = Math.max(i, LOOP.a); LOOP.a = Math.min(i, LOOP.a);
+    LOOP.pass = 1; LOOP.clean = 0; loopJump(false); loopUi();
+    flash(S.mode === "wait" ? "Looping. Play the part; it starts again by itself." : "Looping. Press any key to start; it keeps going round.", 3500);
+  }
+}
+function loopJump(keepGoing){
+  const ev = S.song.ev, a = LOOP.a, b = LOOP.b;
+  stopDemo(true);
+  S.seeked = true; S.finished = false; $("done").hidden = true; S.got.clear();
+  autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
+  for (let i = a; i <= b; i++) ev[i].p.forEach(m => S.hits.delete(i+":"+m));
+  S.idx = a; S.autoNext = a; S.missNext = a; S.combo = 0;
+  if (S.mode === "flow") { S.pos = ev[a].t - 2; S.go = !!keepGoing; }
+  LOOP.wrong0 = R.wrong;
+}
+function loopEnd(){
+  const ev = S.song.ev;
+  let missed = 0;
+  if (S.mode === "flow") for (let i = LOOP.a; i <= LOOP.b; i++) missed += needIdx(ev[i]).filter(j => !S.hits.has(i+":"+ev[i].p[j])).length;
+  const clean = R.wrong === LOOP.wrong0 && missed === 0;
+  LOOP.clean = clean ? LOOP.clean + 1 : 0; LOOP.pass++;
+  let msg = clean ? "Clean!" : "Again!";
+  if (clean && S.mode === "flow" && LOOP.clean >= 2 && S.speed < 100) {
+    S.speed = Math.min(100, S.speed + 10); applySpeed(); LOOP.clean = 0;
+    if (!S.song.practice) { PD.speeds = Object.assign({}, PD.speeds, { [S.song.id]: S.speed }); saveProfile(); }
+    msg = `Faster: ${S.speed}%`;
+  } else if (clean && LOOP.clean >= 3 && (S.mode === "wait" || S.speed >= 100)) {
+    msg = S.mode === "wait" ? "Got it! Try it in Play along" : "Fluent!"; confetti();
+  }
+  S.fx.push({ kind:"text", x:W/2, txt:msg, c: clean ? "#ffe08a" : "#ffffff", life:1.1, max:1.1, size:26, y:HIT*.4 });
+  loopJump(true); loopUi();
+}
+function loopClear(){ LOOP.a = LOOP.b = null; loopUi(); }
+function loopUi(){
+  const bar = $("loopBar"), on = LOOP.a != null;
+  bar.hidden = !on; if (!on) return;
+  $("loopText").textContent = LOOP.b == null ? `Loop from bar ${barOf(LOOP.a)} · tap the end note`
+    : (barOf(LOOP.a) === barOf(LOOP.b) ? `Bar ${barOf(LOOP.a)}` : `Bars ${barOf(LOOP.a)}–${barOf(LOOP.b)}`) + ` · round ${LOOP.pass}` + (S.mode === "flow" ? ` · ${S.speed}%` : "") + (LOOP.clean ? ` · ${LOOP.clean} clean` : "");
+}
 const lanePPB = () => Math.max(46, HIT/4.2);
 function seekTo(pos){
   const ev = S.song.ev; if (!ev.length) return;
@@ -998,7 +1064,7 @@ if (window.visualViewport) visualViewport.addEventListener("resize", () => { cle
 cv.addEventListener("touchstart", unzoom, { passive: true });
 cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
-  if (m==null) { if (DRAG.id == null && !S.demo) { DRAG.id = e.pointerId; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
+  if (m==null) { if (DRAG.id == null && !S.demo) { DRAG.id = e.pointerId; DRAG.x = e.clientX; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
 });
 cv.addEventListener("pointermove", e => {
   if (e.pointerId === DRAG.id) { const dy = e.clientY - DRAG.y; if (Math.abs(dy) > 6) DRAG.moved = true; if (DRAG.moved) seekTo(DRAG.pos + dy / lanePPB()); return; }
@@ -1006,7 +1072,7 @@ cv.addEventListener("pointermove", e => {
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
   const old = ptr.get(e.pointerId); if (m!=null && m!==old) { noteOff(old,"touch"); ptr.set(e.pointerId,m); noteOn(m,"touch"); }
 });
-const up = e => { if (e.pointerId === DRAG.id) { if (DRAG.moved) seekDone(); DRAG.id = null; return; } const m = ptr.get(e.pointerId); if (m!=null){ ptr.delete(e.pointerId); noteOff(m,"touch"); } };
+const up = e => { if (e.pointerId === DRAG.id) { if (DRAG.moved) seekDone(); else if (e.type === "pointerup") { const r = cv.getBoundingClientRect(); tapLane(DRAG.x - r.left, DRAG.y - r.top); } DRAG.id = null; return; } const m = ptr.get(e.pointerId); if (m!=null){ ptr.delete(e.pointerId); noteOff(m,"touch"); } };
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 
 /* ---------- Sparks & confetti ---------- */
@@ -1099,12 +1165,13 @@ function step(dt){
     S.pos += (target - S.pos) * (1 - Math.exp(-dt*9));
     // other-hand-only moments: once the player has started, the app plays them and moves on
     while (!S.finished && (S.go || S.started) && S.hands !== "both" && S.idx < ev.length && !needIdx(ev[S.idx]).length && Math.abs(S.pos - ev[S.idx].t) < .08) {
-      accompany(ev[S.idx]); S.idx++; if (S.idx >= ev.length) finish();
+      accompany(ev[S.idx]); S.idx++; if (LOOP.b != null && S.idx > LOOP.b) loopEnd(); else if (S.idx >= ev.length) finish();
     }
   } else if (!S.finished) {
     if (S.go || S.pos < ev[0].t - 2.2) S.pos += dt*beat;   // count-in waits for the first touch
     while (S.hands !== "both" && S.autoNext < ev.length && ev[S.autoNext].t <= S.pos) accompany(ev[S.autoNext++]);
-    if (S.pos > S.song.end + .5) finish();
+    if (LOOP.b != null && S.pos > ev[LOOP.b].t + ev[LOOP.b].d + .5) loopEnd();
+    else if (S.pos > S.song.end + .5) finish();
   }
   for (let i = autoOff.length - 1; i >= 0; i--) if (performance.now() >= autoOff[i][1]) { noteOff(autoOff[i][0], "auto"); autoOff.splice(i, 1); }
   S.sparks = S.sparks.filter(p => (p.life -= dt) > 0);
@@ -1131,8 +1198,19 @@ function draw(now){
   cx.fillStyle = "rgba(255,255,255,.035)";
   for (let b = Math.ceil(S.pos); b < S.pos + HIT/ppb + 1; b++) { const y = HIT - (b - S.pos)*ppb; cx.fillRect(0,y,W,1); }
 
-  // falling notes
+  // looped part: a brass band with start and end lines
   const ev = S.song.ev;
+  if (LOOP.a != null && ev[LOOP.a]) {
+    const yA = HIT - (ev[LOOP.a].t - S.pos)*ppb + 3;
+    const yB = LOOP.b != null ? HIT - (ev[LOOP.b].t + ev[LOOP.b].d - S.pos)*ppb : null;
+    cx.save();
+    if (yB != null) { cx.fillStyle = "rgba(226,178,92,.07)"; cx.fillRect(0, Math.max(0, yB), W, Math.min(HIT, yA) - Math.max(0, yB)); }
+    cx.fillStyle = COL.brass; cx.font = `700 11px ${FONT}`; cx.textAlign = "left"; cx.textBaseline = "bottom";
+    if (yA > 0 && yA < HIT) { cx.fillRect(0, yA, W, 2); cx.fillText("LOOP START", 10, yA - 3); }
+    if (yB != null && yB > 0 && yB < HIT) { cx.setLineDash([6,4]); cx.strokeStyle = COL.brass; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(0, yB); cx.lineTo(W, yB); cx.stroke(); cx.setLineDash([]); cx.textBaseline = "top"; cx.fillText("LOOP END", 10, yB + 4); }
+    cx.restore();
+  }
+  // falling notes
   cx.textAlign = "center"; cx.textBaseline = "middle";
   ev.forEach((e,i) => {
     const yb = HIT - (e.t - S.pos)*ppb, h = Math.max(14, e.d*ppb - 5), yt = yb - h;
@@ -1715,6 +1793,7 @@ $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; renderList(); $("sheet").hidden = false; };
 $("againBtn").onclick = () => reset();
+$("loopX").onclick = () => { loopClear(); reset(); };
 $("doneClose").onclick = () => { $("done").hidden = true; };
 $("done").addEventListener("pointerdown", e => { if (e.target.id === "done") $("done").hidden = true; });
 $("fullBtn").onclick = () => { const w = SONGS.find(x => x.id === S.song.full); if (w) setSong(w); };
@@ -1737,6 +1816,7 @@ function applySpeed(){
   S.bpm = Math.round(S.song.bpm * S.speed / 100);
   document.querySelectorAll(".speedOut").forEach(o => o.value = S.speed + "%");
   document.querySelectorAll(".speedStep button").forEach(b => b.disabled = (+b.dataset.d < 0 && S.speed <= 50) || (+b.dataset.d > 0 && S.speed >= 150));
+  if (typeof loopUi === "function" && $("loopBar")) loopUi();
   const again = $("againBtn"); if (again) again.textContent = S.speed === 100 ? "Play again" : `Play again at ${S.speed}%`;
 }
 document.querySelectorAll(".speedStep button").forEach(b => b.onclick = () => {
@@ -1795,7 +1875,7 @@ switchProfile(P.id); resize();
 if (!store.get("profile.chosen", false)) { renderWho(); $("who").hidden = false; $("whoClose").hidden = true; }
 renderSync(); syncNow();
 requestAnimationFrame(frame);
-if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode };   // automated checks only
+if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode, LOOP, geom, lane: () => ({ HIT, ppb: lanePPB() }), cv, applySpeed };   // automated checks only
 })();
 </script>
 
