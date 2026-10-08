@@ -686,6 +686,11 @@ function noteOn(m, src){
   if (REC.on && src !== "demo" && src !== "auto") { recOn(m); if (S.sound && !(fromPiano && S.pianoMutes)) toneOn(m); spark(m); return; }
   if (S.sound && !(fromPiano && S.pianoMutes) || src === "demo" || src === "auto") toneOn(m);
   if (src === "auto") return;
+  if (src !== "demo" && S.runup && !S.go && S.mode === "flow") {
+    // first key after moving through the piece: if the next note is right at the line, back up 2 beats to give time
+    const ev = S.song.ev, nx = ev[S.idx]; S.runup = false;
+    if (nx && nx.t - S.pos < 2) S.pos = nx.t - 2;
+  }
   if (src !== "demo") judge(m, src);
   if (src !== "demo") S.go = true;
   if (!S.started && src !== "demo") { S.started = true; hint.hidden = true; }
@@ -789,7 +794,7 @@ function reset(){
   S.seeked = false;
   autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
   S.idx = 0; S.go = false; S.got.clear(); S.hits.clear(); S.finished = false; runReset();
-  S.combo = 0; S.missNext = 0; S.fx = [];
+  S.combo = 0; S.missNext = 0; S.fx = []; S.runup = false;
   const first = S.song.ev[0].t;
   S.pos = first - (S.mode==="wait" ? 2.5 : 4);
   $("done").hidden = true;
@@ -1018,7 +1023,7 @@ function loopJump(keepGoing){
   autoOff.splice(0).forEach(([m]) => noteOff(m, "auto"));
   for (let i = a; i <= b; i++) ev[i].p.forEach(m => S.hits.delete(i+":"+m));
   S.idx = a; S.autoNext = a; S.missNext = a; S.combo = 0;
-  if (S.mode === "flow") { S.pos = ev[a].t - 2; S.go = !!keepGoing; }
+  if (S.mode === "flow") { S.pos = ev[a].t - 2; S.go = !!keepGoing; S.runup = false; }
   LOOP.wrong0 = R.wrong;
 }
 function loopEnd(){
@@ -1119,8 +1124,9 @@ function seekTo(pos){
 }
 function seekDone(){
   const ev = S.song.ev, i = S.idx;
-  if (S.mode === "wait") S.pos = ev[i] ? ev[i].t : S.pos;           // line up on the next note to play
-  else S.pos = (ev[i] ? ev[i].t : S.pos) - 2;                          // a short run-up, then it waits for your first note
+  // The view stays exactly where the player let go (it used to jump back 2 beats in Play along, which made
+  // scrolling to find a loop's end note jumpy). The run-up happens when they press a key to start instead.
+  S.runup = S.mode === "flow";
   $("seekWhat").textContent = S.mode === "wait" ? "play the glowing key to carry on" : "press any key to start from here";
   $("seekHint").hidden = false; clearTimeout(seekDone.t); seekDone.t = setTimeout(() => $("seekHint").hidden = true, 3500);
 }
