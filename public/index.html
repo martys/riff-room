@@ -175,6 +175,18 @@ li.new .song { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(226,178,92
 .stars { display: inline-flex; gap: 1px; font-size: 13px; color: #464c63; }
 .stars i { font-style: normal; }
 .stars i.on { color: var(--brass); }
+.parts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.parts-h { font-size: 12px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.chip-part { font: 700 13px var(--font-body); padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
+.chip-part small { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.chip-part.ok { border-color: #3fb871; } .chip-part.ok::before { content: "✓ "; color: #3fb871; }
+.chip-part.meh { border-color: var(--brass); }
+.chip-part.bad { border-color: #e2685c; }
+.chip-part.worst::after { content: " · trickiest"; color: #e2685c; font-weight: 700; font-size: 11px; }
+.partdone { position: absolute; left: 50%; top: 38%; transform: translate(-50%,-50%); z-index: 5; background: var(--bg); border: 1px solid #3fb871; border-radius: 18px; padding: 18px 20px; box-shadow: 0 10px 30px rgba(0,0,0,.5); text-align: center; max-width: calc(100% - 32px); }
+.partdone h3 { margin: 0 0 12px; font: 800 22px var(--font-display); color: #ffe08a; }
+.partdone .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .loopbar { position: absolute; left: 16px; top: 52px; z-index: 3; display: flex; align-items: center; gap: 8px; background: rgba(18,21,31,.92); border: 1px solid var(--brass); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .loopbar .loop-ic { color: var(--brass); font-weight: 800; }
 .loopbar button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: var(--chip); color: var(--muted); font: 700 12px var(--font-body); cursor: pointer; padding: 0; }
@@ -291,6 +303,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button><button class="c" id="handsPicBtn" aria-pressed="true">Hand picture</button></div></div>
       <div class="more-group"><h4>Extras</h4>
         <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
+      <div class="more-group" id="moreParts" hidden><h4>Practise a part</h4><div class="chips"></div></div>
       <p class="muted" style="margin:2px 0 0">Tip: drag the falling notes to move through the piece. Tap a note, then another, to loop that part.</p>
     </div>
   </header>
@@ -330,6 +343,10 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="recpill" id="recPill" hidden><i></i> Recording · <b id="recCount">0</b> notes · <span id="recTime">0:00</span></div>
     <div class="hint" id="hint">Press the glowing key</div>
     <div class="hands" id="handsGuide" hidden aria-live="polite"></div>
+    <div class="partdone" id="partDone" hidden role="dialog" aria-label="Part done">
+      <h3 id="partDoneTitle">Part 1 is fluent!</h3>
+      <div class="row"><button class="big go" id="partNext">Next part</button><button class="big" id="partWhole">Play the whole song</button><button class="big" id="partMore">Keep looping</button></div>
+    </div>
     <div class="loopbar" id="loopBar" hidden><span class="loop-ic">⟲</span><span id="loopText">Loop</span><button id="loopX" aria-label="Stop looping" title="Stop looping">✕</button></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
@@ -340,6 +357,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <div class="done-stars" id="doneStars" hidden></div>
         <div class="done-score" id="doneScore" hidden></div>
         <p class="done-text" id="doneText"></p>
+        <div class="parts" id="doneParts" hidden><span class="parts-h">Practise a part until it's fluent</span><div class="chips"></div></div>
         <div class="tricky" id="tricky" hidden><span id="trickyText"></span><button class="c" id="trickyBtn">Practise this bit</button></div>
         <div class="speed-row"><span>Speed</span><span class="stepper speedStep"><button data-d="-10" aria-label="Slower">−</button><output class="speedOut">100%</output><button data-d="10" aria-label="Faster">+</button></span></div>
         <div class="row">
@@ -632,7 +650,7 @@ const S = {
   fx: [],                               // Play along hit effects: rings, light beams, "Perfect!" labels
   combo: 0, missNext: 0,
 };
-const LOOP = { a:null, b:null, pass:0, clean:0, wrong0:0 };   // looped part (event indexes), see tapLane()
+const LOOP = { a:null, b:null, pass:0, clean:0, wrong0:0, part:null };   // looped part (event indexes), see tapLane()
 
 /* ---------- Audio: a small piano-ish synth ---------- */
 let ac = null, master = null; const voices = new Map();
@@ -780,13 +798,13 @@ function reset(){
 }
 function setSong(s){
   computeFingering(s);
-  if (S.song !== s) { LOOP.a = LOOP.b = null; $("loopBar").hidden = true; }
+  if (S.song !== s) { LOOP.a = LOOP.b = null; LOOP.part = null; $("loopBar").hidden = true; $("partDone").hidden = true; }
   S.song = s; if (!s.practice) { PD.song = s.id; saveProfile(); }
   S.speed = (PD.speeds && PD.speeds[s.id]) || 100; applySpeed();
   $("songTitle").textContent = s.title;
   $("songMeta").textContent = s.lvl ? `Level ${s.lvl} · ${s.hand}` : s.lvl === 0 && !s.user ? `Finger gym · ${s.hand}` : s.hand;
   const two = songHasBothHands(s); $("handsSeg").hidden = !two; if (!two && S.hands !== "both") { S.hands = "both"; ["both","R","L"].forEach(x => $("h_"+x).setAttribute("aria-pressed", x === "both")); }
-  computeRange(); reset(); renderList(); if (SH.open) renderSheet(); levelOpenBefore = s.lvl ? levelOpen(s.lvl+1) : true;
+  computeRange(); reset(); renderList(); renderParts($("moreParts").querySelector(".chips"), false); if (SH.open) renderSheet(); levelOpenBefore = s.lvl ? levelOpen(s.lvl+1) : true;
   if (!S.started) hint.hidden = false;
   hint.textContent = S.mode==="wait" ? "Press the glowing key" : "Play each note as it reaches the line";
 }
@@ -834,7 +852,8 @@ function finish(){
   } else parts.push(S.seeked && P.scored ? "You jumped around in the piece, so this run isn't scored. Play again from the start for stars." : S.hands !== "both" ? `${S.hands === "R" ? "Right" : "Left"} hand practice, done. Switch Hands to Both to earn stars.` : s.practice ? "That tricky bit, done." : `${s.title}, all ${n} notes.`);
   $("doneText").replaceChildren(...parts.map(t => { const el = document.createElement("span"); el.textContent = t; return el; }));
   const tricky = $("tricky");
-  tricky.hidden = !(hotAt >= 0 && hotN > 0 && !s.practice);
+  renderParts($("doneParts").querySelector(".chips"), true);
+  tricky.hidden = !(hotAt >= 0 && hotN > 0 && !s.practice) || songParts(s).length > 0;
   if (!tricky.hidden) {
     const notes = ev.slice(hotAt, hotAt+4).map(e=>e.p.map(m=>NAMES[m%12]).join("+")).join(" ");
     $("trickyText").textContent = `Trickiest bit: notes ${hotAt+1}–${Math.min(n,hotAt+4)} (${notes})`;
@@ -984,7 +1003,7 @@ function noteAt(x, y){
 function tapLane(x, y){
   const i = noteAt(x, y); if (i < 0) return;
   if (LOOP.a == null || LOOP.b != null) {
-    LOOP.a = i; LOOP.b = null; loopUi();
+    LOOP.a = i; LOOP.b = null; LOOP.part = null; loopUi();
     flash("Loop starts here. Now tap the last note of the part.", 3500);
   } else {
     LOOP.b = Math.max(i, LOOP.a); LOOP.a = Math.min(i, LOOP.a);
@@ -1013,16 +1032,76 @@ function loopEnd(){
     S.speed = Math.min(100, S.speed + 10); applySpeed(); LOOP.clean = 0;
     if (!S.song.practice) { PD.speeds = Object.assign({}, PD.speeds, { [S.song.id]: S.speed }); saveProfile(); }
     msg = `Faster: ${S.speed}%`;
+  } else if (clean && LOOP.clean >= 3 && (S.mode === "wait" || S.speed >= 100) && LOOP.part != null) {
+    loopUi(); return partDone();
   } else if (clean && LOOP.clean >= 3 && (S.mode === "wait" || S.speed >= 100)) {
     msg = S.mode === "wait" ? "Got it! Try it in Play along" : "Fluent!"; confetti();
   }
   S.fx.push({ kind:"text", x:W/2, txt:msg, c: clean ? "#ffe08a" : "#ffffff", life:1.1, max:1.1, size:26, y:HIT*.4 });
   loopJump(true); loopUi();
 }
-function loopClear(){ LOOP.a = LOOP.b = null; loopUi(); }
+/* Parts: the song cut into 2–6 chunks at bar lines (about 12 notes, at least 2 bars each). Practising a part loops it until
+   3 clean rounds in a row (at 100% speed in Play along), then offers the next part. */
+const PARTS = new WeakMap();
+function songParts(s){
+  if (PARTS.has(s.ev)) return PARTS.get(s.ev);
+  const ev = s.ev, bar = s.bar || 4, pick = s.pickup || 0;
+  const bars = Math.ceil((s.end - pick) / bar);
+  if (ev.length < 24 || bars < 4 || s.drill) { PARTS.set(ev, []); return []; }   // finger gym drills are played whole
+  const k = Math.max(2, Math.min(6, Math.round(Math.min(bars / 2, ev.length / 12))));   // ~12 notes and at least 2 bars per part
+  const cuts = [0];
+  for (let j = 1; j < k; j++) {
+    const t = pick + Math.round(bars * j / k) * bar;
+    const i = ev.findIndex(e => e.t >= t - .01);
+    if (i > cuts[cuts.length-1] && i < ev.length) cuts.push(i);
+  }
+  const ps = cuts.map((a, j) => [a, (cuts[j+1] ?? ev.length) - 1]); PARTS.set(ev, ps); return ps;
+}
+function partSlips(a, b){
+  const ev = S.song.ev; let n = 0;
+  for (let i = a; i <= b; i++) { n += R.hot[i] || 0; if (S.mode === "flow") n += needIdx(ev[i]).filter(j => !S.hits.has(i+":"+ev[i].p[j])).length; }
+  return n;
+}
+function renderParts(box, withStatus){
+  const ps = songParts(S.song), wrap = box.closest(".parts, .more-group");
+  wrap.hidden = !ps.length || !!S.song.practice; box.replaceChildren(); if (!ps.length) return;
+  const slips = withStatus ? ps.map(([a,b]) => partSlips(a,b)) : [];
+  const worst = withStatus && Math.max(...slips) > 0 ? slips.indexOf(Math.max(...slips)) : -1;
+  ps.forEach(([a,b], k) => {
+    const c = document.createElement("button"); c.className = "chip-part";
+    c.innerHTML = `Part ${k+1}<small>bars ${barOf(a)}–${barOf(b)}</small>`;
+    if (withStatus) c.classList.add(slips[k] === 0 ? "ok" : slips[k] <= 2 ? "meh" : "bad");
+    if (k === worst) c.classList.add("worst");
+    c.onclick = () => { setMore(false); startPart(k); };
+    box.appendChild(c);
+  });
+}
+function startPart(k){
+  const ps = songParts(S.song); if (!ps[k]) return;
+  $("done").hidden = true; $("partDone").hidden = true;
+  [LOOP.a, LOOP.b] = ps[k]; LOOP.part = k; LOOP.pass = 1; LOOP.clean = 0;
+  loopJump(false); loopUi();
+  flash(`Part ${k+1}: play it 3 times in a row with no slips${S.mode === "flow" ? " at full speed" : ""}.`, 4000);
+}
+function partDone(){
+  const k = LOOP.part, n = songParts(S.song).length;
+  S.finished = true; S.go = false; confetti();
+  $("partDoneTitle").textContent = `Part ${k+1} is fluent!`;
+  $("partNext").hidden = k + 1 >= n; $("partNext").textContent = `Next: part ${k+2}`;
+  $("partWhole").classList.toggle("go", k + 1 >= n);
+  $("partDone").hidden = false;
+}
+$("partNext").onclick = () => startPart(LOOP.part + 1);
+$("partWhole").onclick = () => { $("partDone").hidden = true; loopClear(); reset(); };
+$("partMore").onclick = () => { $("partDone").hidden = true; LOOP.part = null; LOOP.clean = 0; loopJump(false); loopUi(); };
+function loopClear(){ LOOP.a = LOOP.b = null; LOOP.part = null; $("partDone").hidden = true; loopUi(); }
 function loopUi(){
   const bar = $("loopBar"), on = LOOP.a != null;
   bar.hidden = !on; if (!on) return;
+  if (LOOP.part != null && LOOP.b != null) {
+    $("loopText").textContent = `Part ${LOOP.part+1} of ${songParts(S.song).length} · round ${LOOP.pass}` + (S.mode === "flow" ? ` · ${S.speed}%` : "") + ` · ${LOOP.clean}/3 clean`;
+    return;
+  }
   $("loopText").textContent = LOOP.b == null ? `Loop from bar ${barOf(LOOP.a)} · tap the end note`
     : (barOf(LOOP.a) === barOf(LOOP.b) ? `Bar ${barOf(LOOP.a)}` : `Bars ${barOf(LOOP.a)}–${barOf(LOOP.b)}`) + ` · round ${LOOP.pass}` + (S.mode === "flow" ? ` · ${S.speed}%` : "") + (LOOP.clean ? ` · ${LOOP.clean} clean` : "");
 }
@@ -1875,7 +1954,7 @@ switchProfile(P.id); resize();
 if (!store.get("profile.chosen", false)) { renderWho(); $("who").hidden = false; $("whoClose").hidden = true; }
 renderSync(); syncNow();
 requestAnimationFrame(frame);
-if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode, LOOP, geom, lane: () => ({ HIT, ppb: lanePPB() }), cv, applySpeed };   // automated checks only
+if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode, LOOP, songParts, startPart, geom, lane: () => ({ HIT, ppb: lanePPB() }), cv, applySpeed };   // automated checks only
 })();
 </script>
 
