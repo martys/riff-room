@@ -1878,7 +1878,8 @@ $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; renderList(); $("sheet").hidden = false; };
 $("againBtn").onclick = () => reset();
-$("loopX").onclick = () => { loopClear(); reset(); };
+// Stop looping right where you are: the notes stay put and carry on from here (↺ still restarts from the top).
+$("loopX").onclick = () => { loopClear(); seekTo(S.pos); seekDone(); };
 $("doneClose").onclick = () => { $("done").hidden = true; };
 $("done").addEventListener("pointerdown", e => { if (e.target.id === "done") $("done").hidden = true; });
 $("fullBtn").onclick = () => { const w = SONGS.find(x => x.id === S.song.full); if (w) setSong(w); };
