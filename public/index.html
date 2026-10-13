@@ -302,7 +302,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <div class="more-group"><h4>Show</h4>
         <div class="more-btns"><button class="c" id="namesBtn" aria-pressed="true">Note names</button><button class="c" id="fingersBtn" aria-pressed="true">Fingers</button><button class="c" id="handsPicBtn" aria-pressed="true">Hand picture</button></div></div>
       <div class="more-group"><h4>Extras</h4>
-        <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c" id="organBtn" aria-pressed="false">Organ sound</button><button class="c rec" id="recBtn">● Record</button></div></div>
+        <div class="more-btns"><button class="c" id="soundBtn" aria-pressed="true">App sound</button><button class="c" id="organBtn" aria-pressed="false">Organ sound</button><button class="c" id="unlockBtn" aria-pressed="false">Unlock all levels</button><button class="c rec" id="recBtn">● Record</button></div></div>
       <div class="more-group" id="moreParts" hidden><h4>Practise a part</h4><div class="chips"></div></div>
       <p class="muted" style="margin:2px 0 0">Tip: drag the falling notes to move through the piece. Tap a note, then another, to loop that part.</p>
     </div>
@@ -639,7 +639,7 @@ function saveProfile(){ PD.ts = Date.now(); store.set("p."+P.id, PD); syncSoon()
 const stat = id => PD.stats[id] || (PD.stats[id] = { plays:0, best:0, stars:0, last:[], hot:{} });
 const starsOf = id => (PD.stats[id] && PD.stats[id].stars) || 0;
 function levelOpen(n){
-  if (n <= 1 || !P.locks) return true;
+  if (n <= 1 || !P.locks || PD.unlockAll) return true;   // "Unlock all levels" in More (per player, for testing)
   const prev = SONGS.filter(s=>s.lvl===n-1);
   return prev.filter(s=>starsOf(s.id)>=3).length >= Math.min(3, prev.length);
 }
@@ -1939,6 +1939,7 @@ function switchProfile(id){
   loadProfile(id); S.names = PD.names; $("namesBtn").setAttribute("aria-pressed", S.names);
   S.fingers = PD.fingers !== false; $("fingersBtn").setAttribute("aria-pressed", S.fingers);
   $("handsPicBtn").setAttribute("aria-pressed", PD.handsPic !== false); lastFH = "";
+  $("unlockBtn").setAttribute("aria-pressed", !!PD.unlockAll); $("unlockBtn").hidden = !P.locks;
   $("who").hidden = true; renderWho(); setMode(PD.mode);
   if (REC.on) stopRec();
   SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open); $("scoreBtn").hidden = SH.open;
@@ -1989,6 +1990,10 @@ function setHandsPic(on){
   lastFH = ""; if (!on) $("handsGuide").hidden = true;
   if (!on) flash("Hand picture hidden. Bring it back in More → Hand picture.", 3500);
 }
+$("unlockBtn").onclick = () => {
+  PD.unlockAll = !PD.unlockAll; saveProfile(); $("unlockBtn").setAttribute("aria-pressed", !!PD.unlockAll);
+  renderList(); flash(PD.unlockAll ? `All levels open for ${P.name}. Turn it off in More to lock them again.` : `Levels lock again for ${P.name} until earned.`, 3500);
+};
 $("organBtn").onclick = () => {
   S.organ = !S.organ; $("organBtn").setAttribute("aria-pressed", S.organ);
   const base = S.song.whole ? SONGS.find(x => x.id === S.song.parent) || S.song : S.song;
