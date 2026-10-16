@@ -61,6 +61,12 @@ body {
 .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .bar { position: relative; z-index: 6; }
 button.c.icon { width: 38px; padding-inline: 0; font-size: 17px; line-height: 1; }
+.game-btn { border-color: #8a7cf0; color: #cfc8ff; }
+.gamehud { position: absolute; left: 16px; top: 12px; z-index: 3; display: flex; align-items: center; gap: 8px; background: rgba(10,12,30,.8); border: 1px solid #8a7cf0; border-radius: 999px; padding: 6px 16px 6px 12px; font: 800 22px var(--font-display); pointer-events: none; }
+.gamehud .gstar { color: #ffe08a; font-size: 24px; }
+.gamehud .glvl { font: 700 13px var(--font-body); color: #cfc8ff; margin-left: 6px; }
+.gamex { position: absolute; right: 16px; top: 12px; z-index: 3; }
+body.gaming .controls > .seg, body.gaming #listenBtn, body.gaming #restartBtn, body.gaming #gameBtn, body.gaming #scoreBtn, body.gaming #hud, body.gaming #loopBar, body.gaming #handsGuide, body.gaming #seekHint { display: none !important; }
 .lane-btn { position: absolute; right: 16px; top: 12px; z-index: 3; background: rgba(18,21,31,.9); }
 .stepper { display: inline-flex; align-items: center; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
 .stepper button { width: 34px; height: 30px; border: 0; background: none; color: var(--fg); font: 700 18px var(--font-body); border-radius: 999px; cursor: pointer; }
@@ -291,6 +297,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
         <button id="h_R" aria-pressed="false">Right</button>
         <button id="h_L" aria-pressed="false">Left</button>
       </div>
+      <button class="c game-btn" id="gameBtn" hidden>🚀 Star game</button>
       <button class="c" id="listenBtn">▶ Listen</button>
       <button class="c icon" id="restartBtn" aria-label="Restart" title="Restart">↺</button>
       <button class="c piano" id="pianoBtn">Connect piano</button>
@@ -350,6 +357,8 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="loopbar" id="loopBar" hidden><span class="loop-ic">⟲</span><span id="loopText">Loop</span><button id="loopX" aria-label="Stop looping" title="Stop looping">✕</button></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
+    <div class="gamehud" id="gameHud" hidden><span class="gstar">★</span><b id="gameCount">0</b><span class="glvl" id="gameLvl">Level 1</span></div>
+    <button class="c gamex" id="gameX" hidden>✕ Stop game</button>
     <div class="done" id="done" hidden>
       <div class="done-card">
         <button class="c icon done-x" id="doneClose" aria-label="Close">✕</button>
@@ -371,7 +380,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     </div>
     <div class="sheet" id="sheet" hidden role="dialog" aria-label="Pick a riff">
       <div class="sheet-card">
-        <div class="sheet-head"><h2>Pick a piece <small id="sheetWho"></small></h2><button class="c" id="closeSheet">Close</button></div>
+        <div class="sheet-head"><h2>Pick a piece <small id="sheetWho"></small></h2><button class="c game-btn" id="gameBtn2">🚀 Star game</button><button class="c" id="closeSheet">Close</button></div>
         <div id="songList"></div>
       </div>
     </div>
@@ -787,6 +796,7 @@ function judgeMic(m){
   hud();
 }
 function judge(m, src){
+  if (GAME.on) return gameHit(m);
   if (S.demo || S.finished || REC.on) return;
   if (src === "mic") return judgeMic(m);
   const ev = S.song.ev;
@@ -1171,7 +1181,7 @@ function seekDone(){
   $("seekWhat").textContent = S.mode === "wait" ? "play the glowing key to carry on" : "press any key to start from here";
   $("seekHint").hidden = false; clearTimeout(seekDone.t); seekDone.t = setTimeout(() => $("seekHint").hidden = true, 3500);
 }
-cv.addEventListener("wheel", e => { if (e.clientY - cv.getBoundingClientRect().top >= HIT) return; e.preventDefault();
+cv.addEventListener("wheel", e => { if (GAME.on) return; if (e.clientY - cv.getBoundingClientRect().top >= HIT) return; e.preventDefault();
   seekTo(S.pos - e.deltaY / lanePPB()); clearTimeout(seekDone.w); seekDone.w = setTimeout(seekDone, 250); }, { passive:false });
 
 // multi-touch + glide
@@ -1222,7 +1232,7 @@ if (window.visualViewport) visualViewport.addEventListener("resize", () => { cle
 cv.addEventListener("touchstart", unzoom, { passive: true });
 cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect(); const m = keyAt(e.clientX-r.left, e.clientY-r.top);
-  if (m==null) { if (DRAG.id == null && !S.demo) { DRAG.id = e.pointerId; DRAG.x = e.clientX; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
+  if (m==null) { if (DRAG.id == null && !S.demo && !GAME.on) { DRAG.id = e.pointerId; DRAG.x = e.clientX; DRAG.y = e.clientY; DRAG.pos = S.pos; DRAG.moved = false; cv.setPointerCapture(e.pointerId); } return; } cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, m); noteOn(m,"touch");
 });
 cv.addEventListener("pointermove", e => {
   if (e.pointerId === DRAG.id) { const dy = e.clientY - DRAG.y; if (Math.abs(dy) > 6) DRAG.moved = true; if (DRAG.moved) seekTo(DRAG.pos + dy / lanePPB()); return; }
@@ -1308,6 +1318,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 function step(dt){
+  if (GAME.on) return gameStep(dt);
   const ev = S.song.ev, beat = S.bpm/60;
   if (S.demo) {
     S.pos += dt*beat;
@@ -1342,6 +1353,7 @@ function step(dt){
 }
 
 function draw(now){
+  if (GAME.on) return gameDraw(now);
   cx.setTransform(DPR,0,0,DPR,0,0);
   cx.fillStyle = COL.lane; cx.fillRect(0,0,W,HIT);
   const g = geom(), ppb = Math.max(46, HIT/4.2);
@@ -1431,6 +1443,182 @@ function draw(now){
     if (p.sq) cx.fillRect(p.x, p.y, p.r*1.6, p.r); else { cx.beginPath(); cx.arc(p.x,p.y,p.r,0,7); cx.fill(); } });
   cx.globalAlpha = 1;
 }
+
+/* ---------- Star game (for the little ones) ----------
+   Coloured stars fall towards the keys. Press the key under a star and a laser zaps it.
+   Nothing is ever lost: a star that reaches the keys waits there, glowing its key, until it is zapped.
+   Zapping a star while it is still falling gives a bigger blast. Any octave counts on a real piano.
+   Every 10 stars: a new level (more keys, then a little faster). */
+const GAME = { on:false, stars:[], lasers:[], rings:[], caught:0, level:0, next:0, saved:null, best:0, msg:null, shipX:null, kick:0 };
+const GLEVELS = [
+  { keys:[60,64,67],                          fall:6.0, every:2.8, max:1 },
+  { keys:[60,62,64,65,67],                    fall:5.5, every:2.4, max:2 },
+  { keys:[60,62,64,65,67,69,71,72],           fall:5.0, every:2.1, max:2 },
+  { keys:[60,61,62,63,64,65,66,67,68,69,70,71,72], fall:4.6, every:1.9, max:3 },
+];
+const glevel = () => { const L = GLEVELS[Math.min(GAME.level, GLEVELS.length-1)], extra = Math.max(0, GAME.level - (GLEVELS.length-1));
+  return { ...L, fall: L.fall * Math.pow(.9, extra), every: L.every * Math.pow(.9, extra) }; };
+const SPACE = Array.from({length: 90}, () => ({ x: Math.random(), y: Math.random(), r: Math.random()*1.4 + .3, v: Math.random()*.03 + .01, tw: Math.random()*6 }));
+function startGame(){
+  if (GAME.on) return;
+  stopDemo(true); $("done").hidden = true; $("sheet").hidden = true; setMore(false);
+  GAME.saved = { lo:S.lo, hi:S.hi }; S.lo = 60; S.hi = 72;
+  Object.assign(GAME, { on:true, stars:[], lasers:[], rings:[], caught:0, level:0, next:.8, shipX:null, kick:0, msg:{ txt:"Zap the stars!", life:2.2, max:2.2 } });
+  GAME.best = PD.gameBest || 0;
+  hint.hidden = true;
+  document.body.classList.add("gaming"); $("gameHud").hidden = false; $("gameX").hidden = false; $("paper").hidden = true;
+  gameHud();
+}
+function stopGame(){
+  if (!GAME.on) return;
+  GAME.on = false; S.lo = GAME.saved.lo; S.hi = GAME.saved.hi;
+  if (GAME.caught > (PD.gameBest || 0)) { PD.gameBest = GAME.caught; saveProfile(); }
+  document.body.classList.remove("gaming"); $("gameHud").hidden = true; $("gameX").hidden = true; $("paper").hidden = !SH.open;
+  lastFH = ""; reset();
+}
+function gameHud(){ $("gameCount").textContent = GAME.caught; $("gameLvl").textContent = `Level ${GAME.level + 1}`; }
+function gameSpawn(){
+  const L = glevel(), free = L.keys.filter(k => !GAME.stars.some(s => s.m === k));
+  if (!free.length) return;
+  const m = free[Math.floor(Math.random()*free.length)];
+  GAME.stars.push({ m, y: -30, v: (HIT + 30) / L.fall, rot: Math.random()*6, spin: (Math.random() - .5) * 2, wait: 0 });
+}
+function gameHit(m){
+  const g = geom();
+  // match the exact key first, then the same note in any octave (a real piano is wider than the screen)
+  let st = GAME.stars.filter(s => s.m === m);
+  if (!st.length) st = GAME.stars.filter(s => s.m % 12 === m % 12);
+  const keyM = m >= S.lo && m <= S.hi ? m : (st[0] ? st[0].m : 60 + (m % 12));
+  const k = g.keyX(keyM), x = k.x + k.w/2;
+  GAME.shipX = x; GAME.kick = 1;
+  zapSound(!!st.length);
+  if (!st.length) { GAME.lasers.push({ x, y2: 0, c: "rgba(255,255,255,.5)", life: .18, max: .18 }); return; }
+  const s = st.sort((a,b) => b.y - a.y)[0];
+  const early = s.y < HIT - 40;
+  GAME.stars.splice(GAME.stars.indexOf(s), 1);
+  const c = PCOL[s.m % 12];
+  GAME.lasers.push({ x, y2: s.y, c, life: .25, max: .25 });
+  GAME.rings.push({ x, y: s.y, c, life: .6, max: .6, big: early });
+  for (let i = 0; i < (early ? 34 : 18); i++) { const a = Math.random()*7, sp = (early ? 260 : 160) * (.4 + Math.random());
+    S.sparks.push({ x, y: s.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp - 60, life: early ? 1 : .7, c: i % 3 ? c : "#fff", r: 2 + Math.random()*3 }); }
+  if (early) S.fx.push({ kind:"text", x, txt:"Wow!", c:"#ffe08a", life:.9, max:.9, size:24, y: Math.max(40, s.y - 30) });
+  GAME.caught++; 
+  if (GAME.caught % 10 === 0) {
+    GAME.level++; confetti(); levelSound();
+    GAME.msg = { txt: `Level ${GAME.level + 1}!`, life: 2, max: 2 };
+  }
+  gameHud();
+}
+function zapSound(hit){
+  const a = audio(); if (!a) return; const t = a.currentTime;
+  const o = a.createOscillator(), g = a.createGain(); o.type = "square";
+  o.frequency.setValueAtTime(1400, t); o.frequency.exponentialRampToValueAtTime(260, t + .16);
+  g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.0005, t + .18);
+  o.connect(g).connect(master); o.start(t); o.stop(t + .2);
+  if (!hit) return;
+  const len = Math.floor(a.sampleRate * .35), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random()*2 - 1) * Math.pow(1 - i/len, 3);
+  const n = a.createBufferSource(), lp = a.createBiquadFilter(), ng = a.createGain();
+  n.buffer = buf; lp.type = "lowpass"; lp.frequency.setValueAtTime(2400, t + .05); lp.frequency.exponentialRampToValueAtTime(200, t + .4);
+  ng.gain.value = .22; n.connect(lp).connect(ng).connect(master); n.start(t + .04);
+}
+function levelSound(){
+  const a = audio(); if (!a) return; const t = a.currentTime;
+  [72, 76, 79, 84].forEach((m, i) => { const o = a.createOscillator(), g = a.createGain(); o.type = "triangle";
+    o.frequency.value = 440*Math.pow(2,(m-69)/12); g.gain.setValueAtTime(0, t + i*.11); g.gain.linearRampToValueAtTime(.12, t + i*.11 + .01);
+    g.gain.exponentialRampToValueAtTime(.001, t + i*.11 + .5); o.connect(g).connect(master); o.start(t + i*.11); o.stop(t + i*.11 + .55); });
+}
+function gameStep(dt){
+  const L = glevel();
+  GAME.next -= dt;
+  if (GAME.next <= 0 && GAME.stars.length < L.max) { gameSpawn(); GAME.next = L.every * (.8 + Math.random()*.4); }
+  const stop = HIT - 26;
+  GAME.stars.forEach(s => { if (s.y < stop) s.y = Math.min(stop, s.y + s.v*dt); else s.wait += dt; s.rot += s.spin*dt; });
+  GAME.lasers = GAME.lasers.filter(l => (l.life -= dt) > 0);
+  GAME.rings = GAME.rings.filter(r => (r.life -= dt) > 0);
+  if (GAME.msg && (GAME.msg.life -= dt) <= 0) GAME.msg = null;
+  GAME.kick = Math.max(0, GAME.kick - dt*5);
+  S.sparks = S.sparks.filter(p => (p.life -= dt) > 0);
+  S.sparks.forEach(p => { p.x += p.vx*dt; p.y += p.vy*dt; p.vy += (p.sq?40:220)*dt; });
+  S.fx = S.fx.filter(f => (f.life -= dt) > 0);
+  for (let i = autoOff.length - 1; i >= 0; i--) if (performance.now() >= autoOff[i][1]) { noteOff(autoOff[i][0], "auto"); autoOff.splice(i, 1); }
+}
+function starPath(x, y, r, rot){
+  cx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = rot + i * Math.PI/5 - Math.PI/2, rr2 = i % 2 ? r*.45 : r; cx.lineTo(x + Math.cos(a)*rr2, y + Math.sin(a)*rr2); }
+  cx.closePath();
+}
+function gameDraw(now){
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  const g = geom(), L = glevel(), t = now/1000;
+  // deep space with drifting, twinkling stars
+  const sky = cx.createLinearGradient(0, 0, 0, HIT); sky.addColorStop(0, "#070818"); sky.addColorStop(1, "#141433");
+  cx.fillStyle = sky; cx.fillRect(0, 0, W, HIT);
+  SPACE.forEach(p => { const y = ((p.y + t*p.v) % 1) * HIT; cx.globalAlpha = .35 + .35*Math.sin(t*2 + p.tw);
+    cx.fillStyle = "#fff"; cx.fillRect(p.x*W, y, p.r, p.r); });
+  cx.globalAlpha = 1;
+  // lanes for the keys in play
+  L.keys.forEach(m => { const k = g.keyX(m); cx.fillStyle = "rgba(255,255,255,.025)"; cx.fillRect(k.x + 2, 0, k.w - 4, HIT); });
+  // lasers
+  GAME.lasers.forEach(l => { const a = l.life / l.max; cx.save(); cx.globalCompositeOperation = "lighter";
+    cx.strokeStyle = l.c; cx.globalAlpha = a; cx.lineWidth = 6*a + 2; cx.beginPath(); cx.moveTo(l.x, HIT - 44); cx.lineTo(l.x, l.y2); cx.stroke();
+    cx.strokeStyle = "#fff"; cx.lineWidth = 2; cx.stroke(); cx.restore(); });
+  // stars (the lowest one in each lane glows its key)
+  const want = new Set();
+  GAME.stars.forEach(s => {
+    const k = g.keyX(s.m), x = k.x + k.w/2, r = Math.min(26, k.w*.42), c = PCOL[s.m % 12];
+    const landed = s.y >= HIT - 27; if (s.y > HIT*.35) want.add(s.m);
+    cx.save();
+    // trail
+    const tr = cx.createLinearGradient(0, s.y - 90, 0, s.y); tr.addColorStop(0, "rgba(255,255,255,0)"); tr.addColorStop(1, c);
+    if (!landed) { cx.globalAlpha = .5; cx.fillStyle = tr; cx.fillRect(x - r*.25, s.y - 90, r*.5, 90); }
+    cx.globalAlpha = 1; cx.shadowColor = c; cx.shadowBlur = landed ? 18 + 10*Math.sin(t*6) : 16;
+    cx.fillStyle = c; starPath(x, s.y, r * (landed ? 1 + .08*Math.sin(t*6) : 1), s.rot); cx.fill();
+    cx.shadowBlur = 0; cx.lineWidth = 2; cx.strokeStyle = "rgba(255,255,255,.85)"; cx.stroke();
+    // happy face
+    cx.fillStyle = "#14161d"; cx.beginPath(); cx.arc(x - r*.18, s.y - r*.05, r*.07, 0, 7); cx.arc(x + r*.18, s.y - r*.05, r*.07, 0, 7); cx.fill();
+    cx.strokeStyle = "#14161d"; cx.lineWidth = 1.6; cx.beginPath(); cx.arc(x, s.y + r*.08, r*.16, .2, Math.PI - .2); cx.stroke();
+    cx.restore();
+  });
+  // rings
+  GAME.rings.forEach(rg => { const a = rg.life / rg.max, tt = 1 - a; cx.save(); cx.globalAlpha = a; cx.strokeStyle = rg.c; cx.lineWidth = 4*a + 1;
+    cx.beginPath(); cx.arc(rg.x, rg.y, 10 + tt*(rg.big ? 90 : 55), 0, 7); cx.stroke(); cx.restore(); });
+  // the little rocket: sits on the gold line and hops to whichever key is pressed
+  if (GAME.shipX == null) GAME.shipX = g.keyX(L.keys[0]).x + g.keyX(L.keys[0]).w/2;
+  { const x = GAME.shipX, y = HIT - 8 + GAME.kick*6, s2 = Math.min(1.2, Math.max(.8, g.ww/90));
+    cx.save(); cx.translate(x, y); cx.scale(s2, s2);
+    cx.fillStyle = `rgba(255,${150 + Math.random()*80|0},60,.9)`; cx.beginPath(); cx.moveTo(-6, 0); cx.lineTo(0, 10 + Math.random()*8); cx.lineTo(6, 0); cx.fill(); // flame
+    cx.fillStyle = "#e5534b"; cx.beginPath(); cx.moveTo(-9, -4); cx.lineTo(-17, 4); cx.lineTo(-9, 2); cx.fill(); cx.beginPath(); cx.moveTo(9, -4); cx.lineTo(17, 4); cx.lineTo(9, 2); cx.fill(); // fins
+    cx.fillStyle = "#e9e4f5"; cx.beginPath(); cx.moveTo(0, -36); cx.quadraticCurveTo(12, -20, 9, 2); cx.lineTo(-9, 2); cx.quadraticCurveTo(-12, -20, 0, -36); cx.fill(); // body
+    cx.fillStyle = "#5b8be0"; cx.beginPath(); cx.arc(0, -16, 4.5, 0, 7); cx.fill(); cx.strokeStyle = "#fff"; cx.lineWidth = 1.5; cx.stroke(); // window
+    cx.restore(); }
+  // the gold line
+  cx.fillStyle = COL.brass; cx.fillRect(0, HIT-2, W, 2);
+  // keys
+  cx.fillStyle = "#0d0f16"; cx.fillRect(0, HIT, W, H - HIT);
+  const pulse = .5 + .5*Math.sin(now/180);
+  const inPlay = new Set(L.keys);
+  for (const m of g.whites) { const k = g.keyX(m), on = S.held.has(m);
+    cx.fillStyle = on ? PCOL[m%12] : inPlay.has(m) ? COL.ivory : "#9a968c"; rr(k.x+1, HIT, k.w-2, KH-2, 6); cx.fill();
+    if (want.has(m) && !on) { cx.globalAlpha = .3 + .5*pulse; cx.fillStyle = PCOL[m%12]; rr(k.x+1, HIT, k.w-2, KH-2, 6); cx.fill(); cx.globalAlpha = 1; }
+    if (inPlay.has(m)) { cx.fillStyle = PCOL[m%12]; cx.beginPath(); cx.arc(k.x + k.w/2, HIT + KH - 26, Math.min(12, k.w*.2), 0, 7); cx.fill(); }
+  }
+  for (let m = S.lo; m <= S.hi; m++) if (isBlack(m)) { const k = g.keyX(m), on = S.held.has(m);
+    cx.fillStyle = on ? PCOL[m%12] : COL.ebony; rr(k.x, HIT, k.w, g.bh, 4); cx.fill();
+    if (want.has(m) && !on) { cx.globalAlpha = .4 + .5*pulse; cx.fillStyle = PCOL[m%12]; rr(k.x, HIT, k.w, g.bh, 4); cx.fill(); cx.globalAlpha = 1; }
+    if (inPlay.has(m)) { cx.fillStyle = PCOL[m%12]; cx.beginPath(); cx.arc(k.x + k.w/2, HIT + g.bh - 16, Math.min(8, k.w*.25), 0, 7); cx.fill(); }
+  }
+  drawFx();
+  S.sparks.forEach(p => { cx.globalAlpha = Math.min(1, p.life*2); cx.fillStyle = p.c;
+    if (p.sq) cx.fillRect(p.x, p.y, p.r*1.6, p.r); else { cx.beginPath(); cx.arc(p.x,p.y,p.r,0,7); cx.fill(); } });
+  cx.globalAlpha = 1;
+  if (GAME.msg) { const a = GAME.msg.life / GAME.msg.max; cx.save(); cx.globalAlpha = Math.min(1, a*2.5); cx.textAlign = "center"; cx.textBaseline = "middle";
+    cx.fillStyle = "#ffe08a"; cx.shadowColor = "rgba(255,224,138,.7)"; cx.shadowBlur = 20; cx.font = `800 ${Math.round(Math.min(56, W/10))}px ${FONT}`;
+    cx.fillText(GAME.msg.txt, W/2, HIT*.38); cx.restore(); }
+}
+$("gameBtn").onclick = startGame;
+$("gameBtn2").onclick = startGame;
+$("gameX").onclick = stopGame;
 
 /* Hand pictures. Geometry is for the right hand seen from above (thumb on the left);
    the left hand is the mirror image, so its thumb is on the right, just like the real hands over the keys. */
@@ -1940,6 +2128,8 @@ function switchProfile(id){
   S.fingers = PD.fingers !== false; $("fingersBtn").setAttribute("aria-pressed", S.fingers);
   $("handsPicBtn").setAttribute("aria-pressed", PD.handsPic !== false); lastFH = "";
   $("unlockBtn").setAttribute("aria-pressed", !!PD.unlockAll); $("unlockBtn").hidden = !P.locks;
+  if (GAME.on) stopGame();
+  $("gameBtn").hidden = P.scored;
   $("who").hidden = true; renderWho(); setMode(PD.mode);
   if (REC.on) stopRec();
   SH.open = !!PD.sheet; $("paper").hidden = !SH.open; $("scoreBtn").setAttribute("aria-pressed", SH.open); $("scoreBtn").hidden = SH.open;
@@ -2045,7 +2235,7 @@ switchProfile(P.id); resize();
 if (!store.get("profile.chosen", false)) { renderWho(); $("who").hidden = false; $("whoClose").hidden = true; }
 renderSync(); syncNow();
 requestAnimationFrame(frame);
-if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode, LOOP, songParts, startPart, AWAKE, geom, lane: () => ({ HIT, ppb: lanePPB() }), cv, applySpeed };   // automated checks only
+if (location.hash === "#test") window.__riff = { noteOn, noteOff, S, SONGS, setSong, setHands, setMode, LOOP, songParts, startPart, AWAKE, GAME, startGame, stopGame, geom, lane: () => ({ HIT, ppb: lanePPB() }), cv, applySpeed };   // automated checks only
 })();
 </script>
 
