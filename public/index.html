@@ -67,6 +67,8 @@ button.c.icon { width: 38px; padding-inline: 0; font-size: 17px; line-height: 1;
 .gamehud .glvl { font: 700 13px var(--font-body); color: #cfc8ff; margin-left: 6px; }
 .gamex { position: absolute; right: 16px; top: 12px; z-index: 3; }
 body.gaming .controls > .seg, body.gaming #listenBtn, body.gaming #restartBtn, body.gaming #gameBtn, body.gaming #scoreBtn, body.gaming #hud, body.gaming #loopBar, body.gaming #handsGuide, body.gaming #seekHint { display: none !important; }
+.steps { margin: 4px 0 10px; padding-left: 22px; line-height: 1.5; } .steps li { margin: 6px 0; }
+.import .row2 { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .lane-btn { position: absolute; right: 16px; top: 12px; z-index: 3; background: rgba(18,21,31,.9); }
 .stepper { display: inline-flex; align-items: center; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
 .stepper button { width: 34px; height: 30px; border: 0; background: none; color: var(--fg); font: 700 18px var(--font-body); border-radius: 999px; cursor: pointer; }
@@ -323,6 +325,18 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <div class="paper-head"><b id="paperTitle"></b><span id="paperNote"></span><button class="c" id="paperClose">Hide</button></div>
       <div id="abc"></div>
     </section>
+    <div class="sheet" id="scanHelp" hidden role="dialog" aria-label="Scan sheet music">
+      <div class="sheet-card help">
+        <div class="sheet-head"><h2>Scan sheet music</h2><button class="c" id="scanHelpClose">Close</button></div>
+        <ol class="steps">
+          <li>Open a sheet-music scanner app, such as <b>PlayScore 2</b> or <b>Sheet Music Scanner</b>, and photograph the page.</li>
+          <li>Check the notes it found, then <b>export as MusicXML</b> (best: keeps both hands, bars and fingering) or as MIDI. Save it to Files.</li>
+          <li>Tap <b>Choose the file</b> below and pick it. The piece appears in "Your recordings and files".</li>
+        </ol>
+        <p class="small">Scanners make mistakes on busy pages. Press Listen first: if something sounds wrong, fix it in the scanner app and export again.</p>
+        <div class="row"><label class="big primary" for="scanFile">Choose the file</label><input type="file" id="scanFile" hidden></div>
+      </div>
+    </div>
     <div class="sheet" id="pianoHelp" hidden role="dialog" aria-label="Connect the piano">
       <div class="sheet-card help">
         <div class="sheet-head"><h2>Connect the piano</h2><button class="c" id="pianoHelpClose">Close</button></div>
@@ -1717,6 +1731,143 @@ async function importMidi(file){
   SONGS.push(song); saveImports(); renderList(); markNew(song.id); syncNow();
   flash(`Added "${song.title}" (${song.ev.length} notes, both hands). Tap it to play, or switch it to "Tune only".`, 6000);
 }
+/* ---------- One "add a file" for MIDI and MusicXML (.musicxml, .xml, or compressed .mxl) ----------
+   The file type is read from the first bytes, so the iPad file picker can show every file. */
+async function importFile(file){
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const txt = new TextDecoder().decode(head);
+  if (txt.startsWith("MThd")) return importMidi(file);
+  if (head[0] === 0x50 && head[1] === 0x4b) return importMusicXML(file, true);     // "PK": a zip, i.e. .mxl
+  if (/^\s*(﻿)?</.test(txt)) return importMusicXML(file, false);
+  flash("That isn't a MIDI or MusicXML file. In the scanner app, export as MusicXML (.musicxml or .mxl) or MIDI (.mid).", 7000);
+}
+async function unzipMXL(buf){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let eocd = -1; for (let i = u8.length - 22; i >= Math.max(0, u8.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("zip");
+  const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true); const files = {};
+  for (let k = 0; k < n; k++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+    files[name] = { method, csize, off }; p += 46 + nlen + xlen + clen;
+  }
+  const read = async name => { const f = files[name]; if (!f) return null;
+    const ln = dv.getUint16(f.off + 26, true), lx = dv.getUint16(f.off + 28, true), data = u8.subarray(f.off + 30 + ln + lx, f.off + 30 + ln + lx + f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return await new Response(ds).text(); };
+  const container = await read("META-INF/container.xml");
+  let root = container && (container.match(/full-path="([^"]+)"/) || [])[1];
+  if (!root) root = Object.keys(files).find(f => !f.startsWith("META-INF") && /\.(xml|musicxml)$/i.test(f));
+  return read(root);
+}
+const kids = (el, name) => [...el.children].filter(c => c.nodeName === name);
+const kid = (el, name) => kids(el, name)[0];
+const kidText = (el, path) => { let e = el; for (const n of path.split(" ")) { e = e && kid(e, n); } return e ? e.textContent.trim() : ""; };
+// The order measures are played in, with repeats and 1st/2nd endings written out.
+function playOrder(measures){
+  const seq = []; let i = 0, start = 0, pass = 1, skipping = false; const done = new Map();
+  while (i < measures.length && seq.length < 4000) {
+    const bl = kids(measures[i], "barline");
+    const rep = d => bl.map(b => kid(b, "repeat")).find(r => r && r.getAttribute("direction") === d);
+    const end = t => bl.map(b => kid(b, "ending")).find(e => e && e.getAttribute("type") === t);
+    if (rep("forward") && pass === 1) start = i;
+    const es = end("start");
+    if (es) skipping = !(es.getAttribute("number") || "1").split(/[,\s]+/).map(Number).includes(pass);
+    if (skipping) { if (end("stop") || end("discontinue")) skipping = false; i++; continue; }
+    seq.push(i);
+    const back = rep("backward");
+    if (back) { const times = +back.getAttribute("times") || 2, c = done.get(i) || 1;
+      if (c < times) { done.set(i, c + 1); pass = c + 1; i = start; continue; }
+      done.delete(i); pass = 1; start = i + 1; }
+    i++;
+  }
+  return seq;
+}
+function musicXMLToSong(xml, fallbackName){
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("This file isn't valid MusicXML.");
+  const root = doc.documentElement;
+  if (root.nodeName !== "score-partwise") throw new Error(root.nodeName === "score-timewise" ? "This MusicXML is in the rare 'timewise' layout. Export it again as standard (partwise) MusicXML." : "This file isn't MusicXML.");
+  const title = (kidText(root, "work work-title") || kidText(root, "movement-title") || fallbackName).slice(0, 48);
+  const STEP = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+  let tempo = 0, beats = 4, beatType = 4, firstBar = null;
+  const notes = [], partInfo = [];
+  kids(root, "part").forEach((part, pi) => {
+    const measures = kids(part, "measure"), order = playOrder(measures);
+    let div = 1, t = 0, staves = 1; const clef = {}; const open = new Map();
+    for (const mi of order) {
+      const meas = measures[mi]; let pos = t, far = t, lastStart = t;
+      for (const el of meas.children) {
+        if (el.nodeName === "attributes") {
+          div = +kidText(el, "divisions") || div; staves = +kidText(el, "staves") || staves;
+          const tm = kid(el, "time"); if (tm && kidText(tm, "beats")) { beats = parseInt(kidText(tm, "beats")) || beats; beatType = +kidText(tm, "beat-type") || beatType; }
+          kids(el, "clef").forEach(c => { clef[c.getAttribute("number") || 1] = kidText(c, "sign"); });
+        } else if (el.nodeName === "direction" || el.nodeName === "sound") {
+          const snd = el.nodeName === "sound" ? el : kid(el, "sound"); const tp = snd && +snd.getAttribute("tempo"); if (tp && !tempo) tempo = tp;
+        } else if (el.nodeName === "backup") { pos -= (+kidText(el, "duration") || 0) / div;
+        } else if (el.nodeName === "forward") { pos += (+kidText(el, "duration") || 0) / div; far = Math.max(far, pos);
+        } else if (el.nodeName === "note") {
+          if (kid(el, "grace") || kid(el, "cue")) continue;
+          const chord = !!kid(el, "chord"), d = (+kidText(el, "duration") || 0) / div;
+          const at = chord ? lastStart : pos;
+          if (!chord) { lastStart = pos; pos += d; far = Math.max(far, pos); }
+          const pitch = kid(el, "pitch"); if (!pitch || kid(el, "rest")) continue;
+          const m = 12 * ((+kidText(pitch, "octave")) + 1) + STEP[kidText(pitch, "step")] + Math.round(+kidText(pitch, "alter") || 0);
+          const staff = +kidText(el, "staff") || 1;
+          const fing = parseInt(kidText(el, "notations technical fingering")) || 0;
+          const ties = kids(el, "tie").map(x => x.getAttribute("type")), key = pi + ":" + staff + ":" + m;
+          if (ties.includes("stop") && open.has(key)) { const n = open.get(key); n.d = at + d - n.t; if (!ties.includes("start")) open.delete(key); continue; }
+          const n = { t: at, d, m, staff, part: pi, f: fing >= 1 && fing <= 5 ? fing : 0, bass: clef[staff] === "F" };
+          notes.push(n); if (ties.includes("start")) open.set(key, n);
+        }
+      }
+      if (firstBar === null && pi === 0) firstBar = far - t;          // a short first bar is a pickup
+      t = Math.max(far, t + 0.001);
+    }
+    partInfo[pi] = { staves };
+  });
+  if (!notes.length) throw new Error("No notes found in this MusicXML file.");
+  // Hands: a two-staff part is piano (upper staff right hand, lower staff left hand).
+  // Otherwise the part that sits highest is the right hand and the others the left.
+  const piano = partInfo.findIndex(p => p && p.staves >= 2);
+  let use = notes;
+  if (piano >= 0) { use = notes.filter(n => n.part === piano); use.forEach(n => n.h = n.staff >= 2 ? "L" : "R"); }
+  else {
+    const parts = [...new Set(notes.map(n => n.part))], avg = pi => { const a = notes.filter(n => n.part === pi); return a.reduce((s, n) => s + n.m, 0) / a.length; };
+    if (parts.length === 1) notes.forEach(n => n.h = n.bass || avg(parts[0]) < 58 ? "L" : "R");
+    else { const top = parts.sort((a, b) => avg(b) - avg(a))[0]; notes.forEach(n => n.h = n.part === top ? "R" : "L"); }
+  }
+  use.sort((a, b) => a.t - b.t || a.m - b.m);
+  const q = x => Math.round(x * 96) / 96, groups = new Map();
+  use.forEach(n => { const k = q(n.t); if (!groups.has(k)) groups.set(k, []); const g = groups.get(k); if (!g.some(x => x.m === n.m)) g.push(n); });
+  const t0 = Math.min(...groups.keys()), bar = beats * 4 / beatType;
+  const ev = [...groups.keys()].sort((a, b) => a - b).map(k => { const g = groups.get(k).sort((a, b) => a.m - b.m);
+    const e = { t: q(k - t0), d: Math.max(.125, q(Math.max(...g.map(n => n.d)))), p: g.map(n => n.m), h: g.map(n => n.h) };
+    if (g.some(n => n.f)) e.f = g.map(n => n.f);
+    return e; });
+  const last = ev[ev.length - 1], hasL = ev.some(e => e.h.includes("L")), hasR = ev.some(e => e.h.includes("R"));
+  const pickup = firstBar && firstBar < bar - .01 ? q(bar - firstBar) : 0;
+  return { id: "u" + Date.now(), user: true, src: "musicxml", title, lvl: 0, bar, pickup: pickup ? q(firstBar) : 0,
+    hand: hasL && hasR ? "both hands" : hasL ? "left hand" : "right hand",
+    bpm: Math.round(Math.min(160, Math.max(40, tempo || 90))), ev, end: last.t + last.d, ts: Date.now() };
+}
+async function importMusicXML(file, zipped){
+  const name = file.name.replace(/\.(musicxml|mxl|xml)$/i, "").replace(/[_-]+/g, " ").trim().slice(0, 48) || "My piece";
+  let xml;
+  try { xml = zipped ? await unzipMXL(await file.arrayBuffer()) : await file.text(); }
+  catch (e) { return flash("Couldn't open that .mxl file. Try exporting as uncompressed MusicXML (.musicxml) instead.", 7000); }
+  if (!xml) return flash("No music found inside that .mxl file.", 6000);
+  let song;
+  try { song = musicXMLToSong(xml, name); } catch (e) { return flash(e.message || "Couldn't read that MusicXML file.", 7000); }
+  // a "tune only" version too: the right hand (or the top note) on its own
+  const tune = song.ev.map(e => { const k = e.h.lastIndexOf("R") >= 0 ? e.h.lastIndexOf("R") : e.p.length - 1;
+    return e.h.includes("R") ? { t: e.t, d: e.d, p: [e.p[k]], ...(e.f ? { f: [e.f[k]] } : {}), h: ["R"] } : null; }).filter(Boolean);
+  if (song.hand === "both hands" && tune.length) Object.assign(song, { alt: tune, altEnd: tune[tune.length-1].t + tune[tune.length-1].d, altHand: "right hand only" });
+  SONGS.push(song); saveImports(); renderList(); markNew(song.id); syncNow();
+  const fingers = song.ev.some(e => e.f && e.f.some(Boolean));
+  flash(`Added "${song.title}" (${song.ev.length} notes, ${song.hand}${fingers ? ", with the printed fingering" : ""}). Tap it to play.`, 6000);
+}
 function markNew(id){
   const row = document.querySelector(`[data-song="${id}"]`); if (!row) return;
   row.classList.add("new"); row.scrollIntoView({ block:"center", behavior:"smooth" });
@@ -1727,7 +1878,7 @@ function swapHands(s){
   [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand]; s.ts = Date.now();
   computeFingering(s); saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
 }
-function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts}))); }
+function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src}))); }
 store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
 
 /* ---------- Sheet music (rendered with abcjs from the same note data) ---------- */
@@ -2100,13 +2251,15 @@ function renderList(){
     root.appendChild(wrap);
   });
   const wrap = document.createElement("section"); wrap.className = "group";
-  wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">Your recordings and MIDI files</span></h3></div><ul></ul>`;
+  wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">Your recordings and files</span></h3></div><ul></ul>`;
   SONGS.filter(s=>s.user).forEach(s => wrap.querySelector("ul").appendChild(songRow(s, true)));
   const add = document.createElement("div"); add.className = "import";
-  add.innerHTML = `<label class="big primary" for="midiFile">+ Add a MIDI file</label>
-    <input type="file" id="midiFile" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
-    <p>Free, legal piano MIDIs: Mutopia Project and IMSLP (public-domain classics).</p>`;
-  add.querySelector("input").onchange = e => { const f = e.target.files[0]; if (f) importMidi(f); e.target.value = ""; };
+  add.innerHTML = `<div class="row2"><label class="big primary" for="midiFile">+ Add MIDI or MusicXML</label>
+    <button class="big" id="scanBtn">📷 Scan sheet music</button></div>
+    <input type="file" id="midiFile" hidden>
+    <p>Free, legal piano files: Mutopia Project and IMSLP (public-domain classics).</p>`;
+  add.querySelector("input").onchange = e => { const f = e.target.files[0]; if (f) importFile(f); e.target.value = ""; };
+  add.querySelector("#scanBtn").onclick = () => { $("sheet").hidden = true; $("scanHelp").hidden = false; };
   wrap.appendChild(add); root.appendChild(wrap);
 }
 function renderWho(){
@@ -2212,6 +2365,8 @@ $("micSens").oninput = e => { MIC.sens = +e.target.value; $("micSensOut").value 
 $("pianoRetry").onclick = () => connectPiano(false);
 $("pairBtn").onclick = () => { if (window.riffNative) window.riffNative.pairBluetooth(); };
 $("pianoHelpClose").onclick = () => { $("pianoHelp").hidden = true; };
+$("scanHelpClose").onclick = () => { $("scanHelp").hidden = true; $("sheet").hidden = false; };
+$("scanFile").onchange = e => { const f = e.target.files[0]; if (f) { $("scanHelp").hidden = true; $("sheet").hidden = false; importFile(f); } e.target.value = ""; };
 $("scoreBtn").onclick = () => setSheet(!SH.open);
 $("paperClose").onclick = () => setSheet(false);
 $("recBtn").onclick = () => REC.on ? stopRec() : startRec();
