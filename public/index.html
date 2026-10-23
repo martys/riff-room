@@ -69,6 +69,11 @@ button.c.icon { width: 38px; padding-inline: 0; font-size: 17px; line-height: 1;
 body.gaming .controls > .seg, body.gaming #listenBtn, body.gaming #restartBtn, body.gaming #gameBtn, body.gaming #scoreBtn, body.gaming #hud, body.gaming #loopBar, body.gaming #handsGuide, body.gaming #seekHint { display: none !important; }
 .steps { margin: 4px 0 10px; padding-left: 22px; line-height: 1.5; } .steps li { margin: 6px 0; }
 .import .row2 { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+/* Restart: a big round button floating just above the keys on the left, easy to hit with the left hand */
+.restart-fab { position: absolute; left: 14px; bottom: calc(var(--kh, 30%) + 14px); z-index: 3; width: 64px; height: 64px; border-radius: 50%;
+  border: 2px solid var(--brass); background: rgba(18,21,31,.88); color: var(--brass); font: 800 30px var(--font-body); line-height: 1; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45); touch-action: manipulation; }
+.restart-fab:active { transform: scale(.94); background: var(--brass); color: #1a1408; }
 .lane-btn { position: absolute; right: 16px; top: 12px; z-index: 3; background: rgba(18,21,31,.9); }
 .stepper { display: inline-flex; align-items: center; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
 .stepper button { width: 34px; height: 30px; border: 0; background: none; color: var(--fg); font: 700 18px var(--font-body); border-radius: 999px; cursor: pointer; }
@@ -301,7 +306,6 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       </div>
       <button class="c game-btn" id="gameBtn" hidden>🚀 Star game</button>
       <button class="c" id="listenBtn">▶ Listen</button>
-      <button class="c icon" id="restartBtn" aria-label="Restart" title="Restart">↺</button>
       <button class="c piano" id="pianoBtn">Connect piano</button>
       <button class="c mic" id="micBtn">Use mic</button>
       <button class="c" id="moreBtn" aria-haspopup="dialog" aria-expanded="false">More</button>
@@ -319,6 +323,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
 
   <main class="stage" id="stage">
     <canvas id="cv" aria-label="Falling notes above a piano keyboard. Tap keys to play."></canvas>
+    <button class="restart-fab" id="restartBtn" aria-label="Restart from the beginning" title="Restart">↺</button>
     <button class="c lane-btn" id="scoreBtn" aria-pressed="false" title="Show the written notes on the staff">Sheet music</button>
     <div class="seekhint" id="seekHint" hidden>Bar <b id="seekBar">1</b> · <span id="seekWhat">play the glowing key to carry on</span></div>
     <section class="paper" id="paper" hidden aria-label="Sheet music">
