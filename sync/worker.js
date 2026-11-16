@@ -1,12 +1,14 @@
 // Riff Room sync: stores one JSON document per family, keyed by a hash of the family code.
 // GET  /data  (header X-Family: <code>)            -> { version, data }
 // PUT  /data  (header X-Family, body { base, data }) -> { version } or 409 { version, data } if someone saved first
+// POST /ask   (header X-Family, body { query, note?, previous? }) -> a song found or written by Claude (see ask.js)
+import { ask } from "./ask.js";
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("Origin") || "";
     const allowed = (env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
     const cors = {
-      "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Family",
       "Access-Control-Max-Age": "86400",
       "Vary": "Origin",
@@ -15,6 +17,7 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(req.url);
+    if (url.pathname === "/ask") return ask(req, env, cors);
     if (url.pathname !== "/data") return json({ error: "not found" }, 404, cors);
 
     const code = (req.headers.get("X-Family") || "").trim().toLowerCase();

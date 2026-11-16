@@ -137,6 +137,11 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: 
 .song-search { width: 100%; margin: 10px 0 4px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); font: 16px var(--font-body); }
 .song-search:focus { outline: 2px solid var(--brass); outline-offset: 1px; }
 .no-hits { color: var(--muted); padding: 14px 4px; }
+.ask-btn { width: 100%; margin: 2px 0 6px; border-color: #8a7cf0; color: #cfc8ff; padding: 10px; font-weight: 700; }
+.ask-l { display: block; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.ask-status { margin: 12px 0 0; font-size: 14px; line-height: 1.45; }
+.ask-status.busy::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; border-radius: 50%; border: 2px solid #8a7cf0; border-top-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .update-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 10px); z-index: 50; display: flex; gap: 10px; align-items: center; background: var(--bg); border: 1px solid #3fb871; border-radius: 999px; padding: 6px 6px 6px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 14px; }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; }
 .sheet-head h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 20px; }
@@ -334,6 +339,18 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <div class="paper-head"><b id="paperTitle"></b><span id="paperNote"></span><button class="c" id="paperClose">Hide</button></div>
       <div id="abc"></div>
     </section>
+    <div class="sheet" id="askSheet" hidden role="dialog" aria-label="Ask for a song">
+      <div class="sheet-card help">
+        <div class="sheet-head"><h2 id="askTitle">Ask for a song</h2><button class="c" id="askClose">Close</button></div>
+        <p class="small" id="askIntro">Type a song and Claude looks for it: a free score file of the piece if one exists, otherwise it writes the tune out. Works for classics, carols and folk songs; songs still under copyright (most modern pop) can't be added.</p>
+        <label class="ask-l" for="askQuery">Song</label>
+        <input id="askQuery" class="song-search" type="text" placeholder="e.g. Jingle Bells, or Ode to Joy" autocomplete="off">
+        <label class="ask-l" for="askNote" id="askNoteL">Anything special? (optional)</label>
+        <input id="askNote" class="song-search" type="text" placeholder="e.g. easy, right hand only, for a beginner" autocomplete="off">
+        <div class="row"><button class="big primary" id="askGo">Find it</button></div>
+        <p class="ask-status" id="askStatus" hidden></p>
+      </div>
+    </div>
     <div class="sheet" id="scanHelp" hidden role="dialog" aria-label="Scan sheet music">
       <div class="sheet-card help">
         <div class="sheet-head"><h2>Scan sheet music</h2><button class="c" id="scanHelpClose">Close</button></div>
@@ -406,6 +423,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
       <div class="sheet-card">
         <div class="sheet-head"><h2>Pick a piece <small id="sheetWho"></small></h2><button class="c game-btn" id="gameBtn2">🚀 Star game</button><button class="c" id="closeSheet">Close</button></div>
         <input type="search" id="songSearch" class="song-search" placeholder="🔍 Search songs (e.g. carol, bach, salsa)" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search songs">
+        <button class="c ask-btn" id="askOpen">✨ Ask for a song</button>
         <div id="songList"></div>
       </div>
     </div>
@@ -1767,6 +1785,7 @@ async function importMidi(file){
   const song = Object.assign(both, { alt: tune.ev, altEnd: tune.end, altHand: tune.hand, ts: Date.now() });
   SONGS.push(song); saveImports(); renderList(); markNew(song.id); syncNow();
   flash(`Added "${song.title}" (${song.ev.length} notes, both hands). Tap it to play, or switch it to "Tune only".`, 6000);
+  return song;
 }
 /* ---------- One "add a file" for MIDI and MusicXML (.musicxml, .xml, or compressed .mxl) ----------
    The file type is read from the first bytes, so the iPad file picker can show every file. */
@@ -1904,7 +1923,78 @@ async function importMusicXML(file, zipped){
   SONGS.push(song); saveImports(); renderList(); markNew(song.id); syncNow();
   const fingers = song.ev.some(e => e.f && e.f.some(Boolean));
   flash(`Added "${song.title}" (${song.ev.length} notes, ${song.hand}${fingers ? ", with the printed fingering" : ""}). Tap it to play.`, 6000);
+  return song;
 }
+/* ---------- Ask for a song: the server (sync/ask.js) has Claude find a free file or write the tune ---------- */
+const ASK = { fix: null, busy: false };
+function openAsk({ query = "", fix = null } = {}){
+  ASK.fix = fix;
+  $("askTitle").textContent = fix ? "Fix this song" : "Ask for a song";
+  $("askQuery").value = fix ? (fix.query || fix.title) : query;
+  $("askNoteL").textContent = fix ? `What's wrong with "${fix.title}"?` : "Anything special? (optional)";
+  $("askNote").placeholder = fix ? "e.g. the second part is missing, the rhythm is off, make it easier" : "e.g. easy, right hand only, for a beginner";
+  $("askNote").value = ""; $("askStatus").hidden = true; $("askGo").disabled = false;
+  $("sheet").hidden = true; $("askSheet").hidden = false;
+  setTimeout(() => (fix ? $("askNote") : $("askQuery")).focus(), 50);
+}
+function askStatus(text, busy){ const el = $("askStatus"); el.hidden = false; el.textContent = text; el.classList.toggle("busy", !!busy); }
+async function askSong(){
+  if (ASK.busy) return;
+  const query = $("askQuery").value.trim(), note = $("askNote").value.trim();
+  if (query.length < 2) return askStatus("Type the name of a song first.");
+  if (SYNC_URL === null) return askStatus("The song finder works on the pianoriffs.app site. Open the app there and try again.");
+  if (!SY.code) return askStatus("Set up a family code first: tap the player's name at the top left, then Family code. The song finder is only for your family.");
+  ASK.busy = true; $("askGo").disabled = true;
+  askStatus("Looking for it… this can take a minute or two.", true);
+  try {
+    const r = await fetch(SYNC_URL + "/ask", { method: "POST", headers: { "X-Family": SY.code, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, note, previous: ASK.fix ? ASK.fix.title : "" }) });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    if (!r.ok || j.error) { askStatus(j.error || `Something went wrong (${r.status}). Try again in a moment.`); return; }
+    const song = await addAskedSong(j, query);
+    if (!song) { askStatus("The answer came back, but it couldn't be turned into a song. Try again, maybe with \"easy melody\"."); return; }
+    if (ASK.fix && SONGS.includes(ASK.fix)) { SONGS.splice(SONGS.indexOf(ASK.fix), 1); store.set("deleted", store.get("deleted", []).concat(ASK.fix.id)); }
+    saveImports(); syncNow();
+    $("askSheet").hidden = true; setSong(song);
+    flash(`Added "${song.title}". Press Listen to check it; if something's off, use Fix… in the song list.`, 7000);
+  } catch (e) { askStatus("Couldn't reach the song finder. Check the internet connection and try again."); }
+  finally { ASK.busy = false; $("askGo").disabled = false; }
+}
+async function addAskedSong(j, query){
+  const label = j.credit ? ` · ${j.credit}` : "";
+  let song = null;
+  if (j.kind === "notes") {
+    const by = new Map();
+    for (const [t, d, names, h] of j.notes || []) {
+      let ms; try { ms = names.map(toMidi); } catch (e) { continue; }
+      const k = Math.round(t * 96) / 96; if (!by.has(k)) by.set(k, { d: 0, n: new Map() });
+      const g = by.get(k); g.d = Math.max(g.d, d); ms.forEach(m => g.n.set(m, h === "L" ? "L" : "R"));
+    }
+    const ev = [...by.keys()].sort((a, b) => a - b).map(k => { const g = by.get(k), ps = [...g.n.keys()].sort((a, b) => a - b);
+      return { t: k, d: Math.max(.125, g.d), p: ps, h: ps.map(m => g.n.get(m)) }; });
+    if (!ev.length) return null;
+    const t0 = ev[0].t; ev.forEach(e => e.t -= t0);
+    const [num, den] = String(j.time || "4/4").split("/").map(Number), last = ev[ev.length - 1];
+    song = { id: "a" + Date.now(), user: true, title: j.title, lvl: 0, hand: (j.hand || "both hands") + label, bpm: Math.round(Math.min(160, Math.max(40, j.bpm || 90))),
+      bar: num && den ? num * 4 / den : 4, ev, end: last.t + last.d, ts: Date.now() };
+    SONGS.push(song); saveImports(); renderList();
+  } else if (j.data) {
+    const bin = atob(j.data), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = j.kind === "midi" ? ".mid" : j.kind === "mxl" ? ".mxl" : ".musicxml";
+    const file = new File([bytes], (j.title || "Song").replace(/[\\/:*?"<>|]/g, "") + ext);
+    song = j.kind === "midi" ? await importMidi(file) : await importMusicXML(file, j.kind === "mxl");
+    if (!song) return null;
+    song.hand = song.hand + label;
+  }
+  if (!song) return null;
+  song.ai = true; song.credit = j.credit || ""; song.query = query;
+  return song;
+}
+$("askOpen").onclick = () => openAsk({ query: $("songSearch").value.trim() });
+$("askClose").onclick = () => { $("askSheet").hidden = true; $("sheet").hidden = false; };
+$("askGo").onclick = askSong;
+$("askQuery").addEventListener("keydown", e => { if (e.key === "Enter") askSong(); });
+$("askNote").addEventListener("keydown", e => { if (e.key === "Enter") askSong(); });
 function markNew(id){
   const row = document.querySelector(`[data-song="${id}"]`); if (!row) return;
   row.classList.add("new"); row.scrollIntoView({ block:"center", behavior:"smooth" });
@@ -1915,7 +2005,7 @@ function swapHands(s){
   [s.ev, s.alt] = [s.alt, s.ev]; [s.end, s.altEnd] = [s.altEnd, s.end]; [s.hand, s.altHand] = [s.altHand, s.hand]; s.ts = Date.now();
   computeFingering(s); saveImports(); if (S.song === s) setSong(s); else renderList(); markNew(s.id);
 }
-function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src}))); }
+function saveImports(){ syncSoon(); store.set("imports", SONGS.filter(s=>s.user).map(({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src,ai,credit,query})=>({id,title,lvl,hand,bpm,ev,end,user,alt,altEnd,altHand,ts,bar,pickup,src,ai,credit,query}))); }
 store.get("imports", []).forEach(s => { s.lvl = 0; SONGS.push(s); });
 
 /* ---------- Sheet music (rendered with abcjs from the same note data) ---------- */
@@ -2173,7 +2263,7 @@ function stopMic(){
 const SYNC_HOSTS = [/\.workers\.dev$/, /^(www\.)?pianoriffs\.app$/];
 /* Updates: every build stamps BUILD. The app asks the site for the current page now and then (on start, when it comes back
    to the screen, when the song list opens); if the site has a newer build, a bar offers to reload. */
-const BUILD = "20261116-143727";
+const BUILD = "20261116-144418";
 async function checkUpdate(){
   if (BUILD.startsWith("__") || !/^https?:$/.test(location.protocol) || window.top !== window.self) return;
   if (Date.now() - (checkUpdate.t || 0) < 20000) return; checkUpdate.t = Date.now();
@@ -2279,6 +2369,9 @@ function songRow(s, open){
   b.onclick = () => { setSong(s); $("sheet").hidden = true; };
   li.appendChild(b);
   li.dataset.song = s.id;
+  if (s.ai) { b.querySelector("small").textContent += " · AI-made, press Listen to check";
+    const fx = document.createElement("button"); fx.className = "c"; fx.textContent = "Fix…"; fx.setAttribute("aria-label", "Ask to fix " + s.title);
+    fx.onclick = () => openAsk({ fix: s }); li.appendChild(fx); }
   if (s.user) { li.className = "has-del";
     if (s.alt) { const h = document.createElement("button"); h.className = "c"; h.textContent = /tune/.test(s.hand) ? "Both hands" : "Tune only";
       h.setAttribute("aria-label", `Switch ${s.title} to ${h.textContent}`); h.onclick = () => swapHands(s); li.appendChild(h); }
@@ -2301,7 +2394,9 @@ function renderList(){
       if (!open) li.querySelector("small").textContent += ` · locked: Level ${s.lvl} (More → Unlock all levels)`;
       else if (!s.user && s.lvl != null) li.querySelector("small").textContent += ` · ${s.lvl === 0 ? "Warm-up" : "Level " + s.lvl}`;
       wrap.querySelector("ul").appendChild(li); });
-    if (!hits.length) { const p = document.createElement("p"); p.className = "no-hits"; p.textContent = "Try another word, or check the spelling."; wrap.appendChild(p); }
+    if (!hits.length) { const p = document.createElement("p"); p.className = "no-hits"; p.textContent = "Try another word, or ask for it:"; wrap.appendChild(p);
+      const a = document.createElement("button"); a.className = "c ask-btn"; a.textContent = `✨ Ask for "${$("songSearch").value.trim()}"`;
+      a.onclick = () => openAsk({ query: $("songSearch").value.trim() }); wrap.appendChild(a); }
     root.appendChild(wrap); return;
   }
   LEVELS.forEach(L => {
