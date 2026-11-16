@@ -134,6 +134,10 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: 
 
 .sheet { position: absolute; inset: 0; background: rgba(8,10,15,.6); display: flex; justify-content: center; align-items: flex-start; padding: 12px 16px; z-index: 5; overflow-y: auto; }
 .sheet-card { width: 100%; max-width: 560px; background: var(--lane); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 16px; }
+.song-search { width: 100%; margin: 10px 0 4px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); font: 16px var(--font-body); }
+.song-search:focus { outline: 2px solid var(--brass); outline-offset: 1px; }
+.no-hits { color: var(--muted); padding: 14px 4px; }
+.update-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 10px); z-index: 50; display: flex; gap: 10px; align-items: center; background: var(--bg); border: 1px solid #3fb871; border-radius: 999px; padding: 6px 6px 6px 16px; box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 14px; }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; }
 .sheet-head h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 20px; }
 .sheet-sub { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 18px; }
@@ -376,6 +380,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="loopbar" id="loopBar" hidden><span class="loop-ic">⟲</span><span id="loopText">Loop</span><button id="loopX" aria-label="Stop looping" title="Stop looping">✕</button></div>
     <div class="hud" id="hud" hidden><span><b id="hudScore">0</b> pts</span><span class="wrong">✗ <b id="hudWrong">0</b></span></div>
     <div class="toast" id="toast" hidden></div>
+    <div class="update-bar" id="updateBar" hidden><span>New songs and fixes are ready</span><button class="big go" id="updateBtn" style="padding:8px 14px">Update</button><button class="c icon" id="updateX" aria-label="Later">✕</button></div>
     <div class="gamehud" id="gameHud" hidden><span class="gstar">★</span><b id="gameCount">0</b><span class="glvl" id="gameLvl">Level 1</span></div>
     <button class="c gamex" id="gameX" hidden>✕ Stop game</button>
     <div class="done" id="done" hidden>
@@ -400,6 +405,7 @@ button.rec.on { background: #e5534b; border-color: #e5534b; color: #1a0d0b; }
     <div class="sheet" id="sheet" hidden role="dialog" aria-label="Pick a riff">
       <div class="sheet-card">
         <div class="sheet-head"><h2>Pick a piece <small id="sheetWho"></small></h2><button class="c game-btn" id="gameBtn2">🚀 Star game</button><button class="c" id="closeSheet">Close</button></div>
+        <input type="search" id="songSearch" class="song-search" placeholder="🔍 Search songs (e.g. carol, bach, salsa)" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search songs">
         <div id="songList"></div>
       </div>
     </div>
@@ -2160,6 +2166,22 @@ function stopMic(){
 /* ---------- Sync across devices (Cloudflare Worker, see sync/README.md) ---------- */
 // Sync runs when the app is served by its Cloudflare Worker (same address, path /data). Elsewhere it stays off.
 const SYNC_HOSTS = [/\.workers\.dev$/, /^(www\.)?pianoriffs\.app$/];
+/* Updates: every build stamps BUILD. The app asks the site for the current page now and then (on start, when it comes back
+   to the screen, when the song list opens); if the site has a newer build, a bar offers to reload. */
+const BUILD = "20261116-133813";
+async function checkUpdate(){
+  if (BUILD.startsWith("__") || !/^https?:$/.test(location.protocol) || window.top !== window.self) return;
+  if (Date.now() - (checkUpdate.t || 0) < 20000) return; checkUpdate.t = Date.now();
+  try {
+    const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) return;
+    const m = (await r.text()).match(/const BUILD = "([^"]+)"/);
+    if (m && m[1] !== BUILD && !m[1].startsWith("__")) $("updateBar").hidden = false;
+  } catch (e) {}
+}
+$("updateBtn").onclick = () => { location.replace(location.pathname + "?v=" + Date.now()); };
+$("updateX").onclick = () => { $("updateBar").hidden = true; };
+setTimeout(checkUpdate, 4000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(); });
 const SYNC_URL = SYNC_HOSTS.some(r => r.test(location.hostname)) ? "" : null;
 const SY = { code: store.get("sync.code", ""), busy:false, timer:0, last:0 };
 function snapshot(){
@@ -2260,9 +2282,23 @@ function songRow(s, open){
     li.appendChild(x); }
   return li;
 }
+const fold = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 function renderList(){
   const root = $("songList"); root.innerHTML = "";
   $("sheetWho").textContent = P.name;
+  const q = fold($("songSearch").value).trim();
+  if (q) {
+    const words = q.split(/\s+/);
+    const hits = SONGS.filter(s => !s.practice && words.every(w => fold(s.title + " " + s.hand + " " + (s.id || "")).includes(w)));
+    const wrap = document.createElement("section"); wrap.className = "group";
+    wrap.innerHTML = `<div class="lvl-head"><h3><span class="lvl-n">${hits.length ? hits.length + " found" : "Nothing found"}</span></h3></div><ul></ul>`;
+    hits.forEach(s => { const open = s.user || s.lvl == null || levelOpen(s.lvl); const li = songRow(s, open);
+      if (!open) li.querySelector("small").textContent += ` · locked: Level ${s.lvl} (More → Unlock all levels)`;
+      else if (!s.user && s.lvl != null) li.querySelector("small").textContent += ` · ${s.lvl === 0 ? "Warm-up" : "Level " + s.lvl}`;
+      wrap.querySelector("ul").appendChild(li); });
+    if (!hits.length) { const p = document.createElement("p"); p.className = "no-hits"; p.textContent = "Try another word, or check the spelling."; wrap.appendChild(p); }
+    root.appendChild(wrap); return;
+  }
   LEVELS.forEach(L => {
     const list = pathSongs().filter(s=>s.lvl===L.n), open = levelOpen(L.n);
     const got = list.reduce((a,s)=>a+starsOf(s.id),0), max = list.length*5;
@@ -2316,7 +2352,8 @@ function switchProfile(id){
   setSong(s && (!s.lvl || levelOpen(s.lvl)) ? s : SONGS.find(x=>x.id===P.first));
   S.started = false; hint.hidden = false;
 }
-$("songBtn").onclick = () => { renderList(); $("sheet").hidden = false; syncNow(); };
+$("songBtn").onclick = () => { $("songSearch").value = ""; renderList(); $("sheet").hidden = false; syncNow(); checkUpdate(); };
+$("songSearch").addEventListener("input", () => renderList());
 $("closeSheet").onclick = () => { $("sheet").hidden = true; };
 $("sheet").addEventListener("click", e => { if (e.target.id==="sheet") $("sheet").hidden = true; });
 $("pickBtn").onclick = () => { $("done").hidden = true; renderList(); $("sheet").hidden = false; };
